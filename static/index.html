@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>QNTX.Beacon — Сокращайте ссылки</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=46">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+    <script src="/static/chart.min.js?v=46"></script>
+</head>
+<body>
+    <div class="bg-image"></div>
+    <div class="bg-overlay"></div>
+
+    <!-- Top Bar -->
+    <header class="topbar">
+        <span class="brand" id="brand-logo">QNTX.Beacon</span>
+        <div class="topbar-right" id="topbar-right">
+            <button class="btn-ghost" id="my-links-btn" style="display:none;">Мои ссылки</button>
+            <button class="btn-ghost" id="dashboard-tab-btn" style="display:none;">Админка</button>
+            <button class="btn-ghost" id="btn-show-login">Войти</button>
+            <button class="btn-light" id="btn-show-register">Создать аккаунт</button>
+            <div id="topbar-user" class="topbar-user" style="display:none;">
+                <span class="topbar-username" id="topbar-username"></span>
+                <button class="btn-ghost" id="btn-logout">Выйти</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero -->
+    <main class="hero" id="hero-section">
+        <h1 class="hero-title">Сокращайте ссылки,<br>увеличивайте охват.</h1>
+        <p class="hero-subtitle">Профессиональный сервис сокращения ссылок с аналитикой, QR-кодами и защитой.</p>
+
+        <div class="search-box">
+            <form id="main-shorten-form" class="search-form">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <input type="url" id="hero-url" placeholder="Вставьте длинную ссылку..." required autocomplete="off">
+                <button type="submit" class="btn-shorten" id="btn-shorten">Сократить</button>
+            </form>
+            <div class="options-row">
+                <button type="button" class="btn-options-toggle" onclick="toggleOptions()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
+                    <span>Опции</span>
+                </button>
+                <button type="button" class="btn-options-toggle" onclick="togglePassword('hero')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span>Пароль</span>
+                </button>
+            </div>
+            <div class="search-options" id="search-options" style="display:none;">
+                <input type="text" id="hero-slug" placeholder="Алиас" class="input-small">
+                <input type="text" id="hero-title" placeholder="Название" class="input-small">
+                <input type="text" id="utm-source" placeholder="UTM Source" class="input-small">
+                <input type="text" id="utm-medium" placeholder="UTM Medium" class="input-small">
+                <input type="text" id="utm-campaign" placeholder="UTM Campaign" class="input-small">
+                <button type="button" class="btn-options-toggle" onclick="toggleGeoOptions()" style="margin-top:8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                    <span>Гео-таргетинг</span>
+                </button>
+            </div>
+            <div class="search-options" id="geo-options" style="display:none;">
+                <div style="grid-column:1/-1;font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:4px;">Гео-таргетинг (код страны → URL)</div>
+                <input type="text" id="geo-ru" placeholder="RU: https://ru.site.com" class="input-small">
+                <input type="text" id="geo-us" placeholder="US: https://us.site.com" class="input-small">
+                <input type="text" id="geo-eu" placeholder="EU: https://eu.site.com" class="input-small">
+                <button type="button" class="btn-options-toggle" onclick="toggleABOptions()" style="margin-top:8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M16 1h4v4"/><path d="M8 1H4v4"/><path d="M16 23h4v-4"/><path d="M8 23H4v-4"/><path d="M1 16v4h4"/><path d="M1 8v4h4"/><path d="M23 16v4h-4"/><path d="M23 8v4h-4"/></svg>
+                    <span>A/B тестирование</span>
+                </button>
+            </div>
+            <div class="search-options" id="ab-options" style="display:none;">
+                <div style="grid-column:1/-1;font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:4px;">A/B тест (добавь URL для случайного выбора)</div>
+                <input type="text" id="ab-url-1" placeholder="URL вариант A" class="input-small">
+                <input type="text" id="ab-url-2" placeholder="URL вариант B" class="input-small">
+                <input type="text" id="ab-url-3" placeholder="URL вариант C" class="input-small">
+            </div>
+            <div class="search-options" id="hero-password-row" style="display:none;">
+                <input type="password" id="hero-password" placeholder="Пароль для ссылки" class="input-small">
+            </div>
+        </div>
+
+        <div class="result-card" id="result-card" style="display:none;">
+            <div class="result-label">Ваша короткая ссылка</div>
+            <div class="result-row">
+                <a href="#" id="result-link" class="result-link" target="_blank"></a>
+                <button class="btn-copy" onclick="copyResult()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Копировать
+                </button>
+            </div>
+            <img id="result-qr" class="result-qr" style="display:none;" alt="QR Code">
+        </div>
+
+        <!-- Features -->
+        <div class="features-grid">
+            <div class="feature-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#0078d4" stroke-width="2" width="28" height="28"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <h3>Мгновенно</h3>
+                <p>Сокращение ссылок за секунду</p>
+            </div>
+            <div class="feature-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#00b4d8" stroke-width="2" width="28" height="28"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <h3>Аналитика</h3>
+                <p>Отслеживайте переходы и устройства</p>
+            </div>
+            <div class="feature-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" width="28" height="28"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10v10H7z"/></svg>
+                <h3>QR-коды</h3>
+                <p>Генерируйте QR для печати</p>
+            </div>
+            <div class="feature-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2" width="28" height="28"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <h3>Защита</h3>
+                <p>Пароль для важных ссылок</p>
+            </div>
+        </div>
+    </main>
+    </main>
+
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="auth-modal" style="display:none;">
+        <div class="modal-card">
+            <button class="modal-close" onclick="hideAuth()">&times;</button>
+            <div id="login-view">
+                <div class="modal-logo">QNTX.Beacon</div>
+                <h2 class="modal-title">Вход</h2>
+                <form id="login-form">
+                    <div class="form-field">
+                        <label>Email</label>
+                        <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+                    </div>
+                    <div class="form-field">
+                        <label>Пароль</label>
+                        <input type="password" id="login-password" placeholder="Ваш пароль" required autocomplete="current-password">
+                    </div>
+                    <div class="form-error" id="login-error" style="display:none;"></div>
+                    <button type="submit" class="btn-primary">Войти</button>
+                </form>
+                <p class="modal-switch">Нет аккаунта? <a href="#" onclick="showAuth('register'); return false;">Создать</a></p>
+                <p class="modal-switch" style="margin-top:8px"><a href="#" onclick="showAuth('forgot'); return false;">Забыли пароль?</a></p>
+            </div>
+
+            <div id="register-view" style="display:none;">
+                <div class="modal-logo">QNTX.Beacon</div>
+                <h2 class="modal-title">Создать аккаунт</h2>
+                <form id="register-form">
+                    <div class="form-field">
+                        <label>Имя пользователя</label>
+                        <input type="text" id="register-username" placeholder="johndoe" required minlength="3" maxlength="50" autocomplete="username">
+                        <div class="field-hint">3-50 символов, только буквы, цифры, дефис и подчёркивание</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Email</label>
+                        <input type="email" id="register-email" placeholder="you@example.com" required autocomplete="email">
+                    </div>
+                    <div class="form-field">
+                        <label>Пароль</label>
+                        <input type="password" id="register-password" placeholder="Надёжный пароль" required minlength="8" autocomplete="new-password">
+                        <div class="field-hint">Минимум 8 символов, заглавная буква и цифра</div>
+                        <div class="password-strength"><div class="password-strength-bar" id="password-strength-bar"></div></div>
+                        <div class="password-strength-text" id="password-strength-text"></div>
+                    </div>
+                    <div class="form-field">
+                        <label>Подтвердите пароль</label>
+                        <input type="password" id="register-confirm-password" placeholder="Повторите пароль" required autocomplete="new-password">
+                    </div>
+                    <div class="form-field captcha-field">
+                        <label>Подтвердите, что вы человек</label>
+                        <div class="captcha-container">
+                            <div class="captcha-box">
+                                <div class="captcha-code" id="captcha-code"></div>
+                                <button type="button" class="captcha-refresh" onclick="refreshCaptcha()" title="Обновить">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </button>
+                            </div>
+                            <input type="text" id="captcha-input" placeholder="Введите код" autocomplete="off" required>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>Код приглашения (необязательно)</label>
+                        <input type="text" id="register-referral-code" placeholder="Введите код" autocomplete="off">
+                    </div>
+                    <div class="form-error" id="register-error" style="display:none;"></div>
+                    <button type="submit" class="btn-primary" id="register-btn">
+                        <span class="btn-text">Создать аккаунт</span>
+                        <span class="btn-spinner" style="display:none;"></span>
+                    </button>
+                </form>
+                <p class="modal-switch">Уже есть аккаунт? <a href="#" onclick="showAuth('login'); return false;">Войти</a></p>
+            </div>
+
+            <div id="forgot-view" style="display:none;">
+                <div class="modal-logo">QNTX.Beacon</div>
+                <h2 class="modal-title">Сброс пароля</h2>
+                <form id="forgot-form">
+                    <div class="form-field">
+                        <label>Email</label>
+                        <input type="email" id="forgot-email" placeholder="you@example.com" required autocomplete="email">
+                    </div>
+                    <button type="submit" class="btn-primary">Отправить ссылку</button>
+                </form>
+                <p class="modal-switch"><a href="#" onclick="showAuth('login'); return false;">Вернуться к входу</a></p>
+            </div>
+
+            <div id="register-success-view" style="display:none;">
+                <div class="modal-logo">QNTX.Beacon</div>
+                <div class="success-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#0078d4" stroke-width="2" width="48" height="48"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <h2 class="modal-title">Проверьте почту</h2>
+                <p class="modal-desc">Мы отправили ссылку для подтверждения на <strong id="reg-success-email"></strong><br>Перейдите по ссылке, чтобы активировать аккаунт.</p>
+                <button class="btn-primary" onclick="hideAuth(); showAuth('login');">Войти</button>
+                <p class="modal-switch" style="margin-top:16px;">Не пришло письмо? <a href="#" onclick="resendVerificationFromSuccess(); return false;">Отправить повторно</a></p>
+            </div>
+
+            <div id="forgot-success-view" style="display:none;">
+                <div class="modal-logo">QNTX.Beacon</div>
+                <div class="success-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#0078d4" stroke-width="2" width="48" height="48"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <h2 class="modal-title">Проверьте почту</h2>
+                <p class="modal-desc">Если аккаунт существует, мы отправили ссылку для сброса пароля.</p>
+                <button class="btn-primary" onclick="showAuth('login')">Вернуться к входу</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verification Required Modal -->
+    <div id="verification-required-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card modal-narrow">
+            <div class="modal-logo">QNTX.Beacon</div>
+            <div class="warning-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2" width="48" height="48"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <h2 class="modal-title">Подтвердите email</h2>
+            <p class="modal-desc">Проверьте почту <strong id="verification-email"></strong><br>Перейдите по ссылке в письме.</p>
+            <button class="btn-primary" onclick="resendVerificationFromModal()">Отправить письмо повторно</button>
+            <button class="btn-ghost-modal" onclick="hideVerificationRequired()">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard" id="dashboard" style="display:none;">
+        <div class="dash-tabs">
+            <button class="dash-tab active" data-tab="links">Ссылки</button>
+            <button class="dash-tab" data-tab="folders">Папки</button>
+            <button class="dash-tab" data-tab="bulk">Bulk</button>
+            <button class="dash-tab" data-tab="export">Экспорт</button>
+            <button class="dash-tab" data-tab="plans">Тарифы</button>
+            <button class="dash-tab" data-tab="account">Настройки</button>
+            <button class="dash-tab" data-tab="admin" id="admin-tab" style="display:none;">Админка</button>
+        </div>
+
+        <!-- Links Tab -->
+        <div class="dash-panel" id="tab-links">
+            <div class="dash-create">
+                <form id="dash-shorten-form" class="search-form dash-search-form">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    <input type="url" id="dash-url" placeholder="Вставьте длинную ссылку..." required autocomplete="off">
+                    <button type="submit" class="btn-shorten" id="btn-dash-shorten">Сократить</button>
+                </form>
+                <div class="options-row">
+                    <button type="button" class="btn-options-toggle" onclick="toggleDashOptions()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
+                        <span>Опции</span>
+                    </button>
+                    <button type="button" class="btn-options-toggle" onclick="togglePassword('dash')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        <span>Пароль</span>
+                    </button>
+                </div>
+                <div class="dash-options" id="dash-options" style="display:none;">
+                    <input type="text" id="dash-slug" placeholder="Пользовательский алиас" class="input-small">
+                    <input type="text" id="dash-title" placeholder="Название" class="input-small">
+                    <select id="dash-folder-id" class="input-small">
+                        <option value="">Без папки</option>
+                    </select>
+                </div>
+                <div class="dash-options" id="dash-password-row" style="display:none;">
+                    <input type="password" id="dash-password" placeholder="Пароль для ссылки" class="input-small">
+                </div>
+                <div class="result-card dash-result" id="dash-result" style="display:none;">
+                    <div class="result-label">Ваша короткая ссылка</div>
+                    <div class="result-row">
+                        <a href="#" id="dash-result-link" class="result-link" target="_blank"></a>
+                        <button class="btn-copy" type="button" onclick="copyDashResult()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Копировать
+                        </button>
+                    </div>
+                    <img id="dash-result-qr" class="result-qr" style="display:none;" alt="QR Code">
+                </div>
+            </div>
+
+            <div class="dash-header">
+                <h2>Ваши ссылки</h2>
+                <div class="dash-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="search-links" placeholder="Поиск...">
+                </div>
+            </div>
+            <div class="links-grid" id="links-grid">
+                <div class="links-empty" id="links-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    <p>Пока нет ссылок. Создайте свою первую ссылку выше!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plans Tab -->
+        <!-- Export Tab -->
+        <div class="dash-panel" id="tab-export" style="display:none;">
+            <h2>Экспорт / Импорт</h2>
+            <div class="export-section">
+                <h3>Экспорт ссылок</h3>
+                <p class="dash-desc">Скачать все ваши ссылки в файле</p>
+                <div class="export-btns">
+                    <button class="btn-primary" id="btn-export-csv">CSV</button>
+                    <button class="btn-primary" id="btn-export-json">JSON</button>
+                </div>
+            </div>
+            <div class="export-section">
+                <h3>Импорт ссылок</h3>
+                <p class="dash-desc">Загрузить ссылки из файла</p>
+                <input type="file" id="import-file" accept=".csv,.json" class="input-small">
+                <button class="btn-primary" id="btn-import">Импортировать</button>
+                <div class="import-result" id="import-result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Folders Tab -->
+        <div class="dash-panel" id="tab-folders" style="display:none;">
+            <h2>Папки</h2>
+            <div class="folder-create">
+                <input type="text" id="new-folder-name" placeholder="Название папки" class="input-small">
+                <input type="color" id="new-folder-color" value="#0078d4" style="width:40px;height:40px;border:none;cursor:pointer;">
+                <button class="btn-primary" id="btn-create-folder">Создать</button>
+            </div>
+            <div class="folders-grid" id="folders-grid"></div>
+        </div>
+
+        <!-- Bulk Tab -->
+        <div class="dash-panel" id="tab-bulk" style="display:none;">
+            <h2>Bulk создание</h2>
+            <p class="dash-desc">Создайте несколько ссылок за раз (по одной на строку)</p>
+            <textarea id="bulk-urls" placeholder="https://site1.com&#10;https://site2.com&#10;https://site3.com" class="bulk-textarea"></textarea>
+            <div class="bulk-options">
+                <label>Папка:</label>
+                <select id="bulk-folder-id" class="input-small">
+                    <option value="">Без папки</option>
+                </select>
+            </div>
+            <button class="btn-primary" id="btn-bulk-create">Создать все</button>
+            <div class="bulk-results" id="bulk-results" style="display:none;">
+                <h3>Созданные ссылки:</h3>
+                <div class="bulk-links" id="bulk-links"></div>
+            </div>
+        </div>
+
+        <!-- Account Tab -->
+        <div class="dash-panel" id="tab-account" style="display:none;">
+            <h2>Настройки аккаунта</h2>
+            <div class="account-section">
+                <h3>Профиль</h3>
+                <div class="form-field">
+                    <label>Имя пользователя</label>
+                    <input type="text" id="account-username" class="input-small" readonly>
+                </div>
+                <div class="form-field">
+                    <label>Email</label>
+                    <input type="email" id="account-email" class="input-small" readonly>
+                    <button class="btn-primary" id="btn-change-email" style="margin-top:8px;width:auto;padding:8px 16px;font-size:13px;">Изменить email</button>
+                </div>
+            </div>
+            <div class="account-section">
+                <h3>Активировать промокод</h3>
+                <div class="form-field">
+                    <label>Введите промокод</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="promocode-input" placeholder="PROMOCODE" class="input-small" style="flex:1;">
+                        <button class="btn-primary" id="btn-redeem-promo" style="width:auto;" onclick="redeemPromocode('account')">Активировать</button>
+                    </div>
+                    <div id="promocode-result" style="margin-top:8px;display:none;"></div>
+                </div>
+            </div>
+            <div class="account-section">
+                <h3>Удалить аккаунт</h3>
+                <p class="dash-desc" style="color:#f55;">Внимание! Это действие необратимо.</p>
+                <button class="btn-danger" id="btn-delete-account">Удалить аккаунт</button>
+            </div>
+            <div class="account-section">
+                <h3>Сменить пароль</h3>
+                <div class="form-field">
+                    <label>Текущий пароль</label>
+                    <input type="password" id="old-password" class="input-small">
+                </div>
+                <div class="form-field">
+                    <label>Новый пароль</label>
+                    <input type="password" id="new-password" class="input-small">
+                </div>
+                <button class="btn-primary" id="btn-change-password">Сменить пароль</button>
+            </div>
+            <div class="account-section">
+                <h3>API ключ</h3>
+                <div class="api-key-row">
+                    <input type="text" id="api-key" class="input-small" readonly>
+                    <button class="btn-ghost" id="btn-copy-api-key">Копировать</button>
+                </div>
+                <button class="btn-ghost" id="btn-regenerate-api-key">Пересоздать</button>
+            </div>
+        </div>
+
+        <div class="dash-panel" id="tab-plans" style="display:none;">
+            <div class="plans-header">
+                <h2>Тарифные планы</h2>
+                <p class="plans-subtitle">Выберите подходящий тариф для ваших задач</p>
+                <div class="current-plan-info" id="current-plan-info"></div>
+            </div>
+            <div class="plans-grid" id="plans-grid"></div>
+            <div class="payment-history" id="payment-history" style="display:none;">
+                <h3>История платежей</h3>
+                <div class="payments-list" id="payments-list"></div>
+            </div>
+            <div class="promocode-section" style="background:rgba(255,255,255,0.05);border-radius:12px;padding:20px;margin-top:20px;">
+                <h3>Активировать промокод</h3>
+                <p class="dash-desc">Введите промокод для активации тарифа</p>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <input type="text" id="promocode-input-plans" placeholder="PROMOCODE" class="input-small" style="flex:1;max-width:300px;">
+                    <button class="btn-primary" id="btn-redeem-promo-tab" onclick="redeemPromocode('plans')">Активировать</button>
+                </div>
+                <div id="promocode-result-plans" style="margin-top:12px;display:none;"></div>
+            </div>
+            <div class="referral-section">
+                <h3>Партнёрская программа</h3>
+                <p class="referral-desc">Приглашайте друзей и получайте бонусы!</p>
+                <div class="referral-box">
+                    <div class="referral-label">Ваша реферальная ссылка:</div>
+                    <div class="referral-link-row">
+                        <input type="text" id="referral-link" readonly class="referral-link-input">
+                        <button class="btn-copy" id="btn-copy-referral">Копировать</button>
+                    </div>
+                    <div class="referral-stats">
+                        <div class="referral-stat"><span class="referral-stat-num" id="referral-count">0</span><span class="referral-stat-label">приглашено</span></div>
+                        <div class="referral-stat"><span class="referral-stat-num" id="referral-bonus">0</span><span class="referral-stat-label">бонусов</span></div>
+                        <div class="referral-stat"><span class="referral-stat-num" id="referral-pending">0</span><span class="referral-stat-label">ожидают</span></div>
+                    </div>
+                </div>
+                <button class="btn-ghost" onclick="loadReferralDetails()" style="margin-top:16px;">Показать рефералов</button>
+                <div id="referral-details" style="display:none;margin-top:16px;">
+                    <div class="admin-table-wrap">
+                        <table class="admin-table">
+                            <thead><tr><th>Пользователь</th><th>Email</th><th>Тариф</th><th>Дата регистрации</th></tr></thead>
+                            <tbody id="referral-users-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Tab -->
+        <div class="dash-panel" id="tab-admin" style="display:none;">
+            <div class="admin-header"><h2>Панель администратора</h2></div>
+            <div class="admin-stats" id="admin-stats"></div>
+            <div class="admin-section">
+                <div class="admin-section-header">
+                    <h3>Пользователи</h3>
+                    <div class="admin-filters">
+                        <input type="text" id="admin-search-users" placeholder="Поиск..." class="input-small">
+                        <select id="admin-filter-plan" class="input-small">
+                            <option value="">Все тарифы</option>
+                            <option value="free">Free</option>
+                            <option value="pro">Pro</option>
+                            <option value="business">Business</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead><tr><th>ID</th><th>Пользователь</th><th>Email</th><th>Тариф</th><th>Ссылки</th><th>Рефералы</th><th>Статус</th><th>Действия</th></tr></thead>
+                        <tbody id="admin-users-body"></tbody>
+                    </table>
+                </div>
+                <div class="admin-pagination" id="admin-users-pagination"></div>
+            </div>
+            <div class="admin-section">
+                <h3>Платежи</h3>
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead><tr><th>ID</th><th>Пользователь</th><th>Провайдер</th><th>Тариф</th><th>Сумма</th><th>Статус</th><th>Дата</th></tr></thead>
+                        <tbody id="admin-payments-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="admin-section">
+                <div class="admin-section-header">
+                    <h3>Модерация ссылок</h3>
+                    <div class="admin-filters">
+                        <select id="admin-filter-mod" class="input-small">
+                            <option value="">Все</option>
+                            <option value="flagged">Подозрительные</option>
+                            <option value="banned">Заблокированные</option>
+                            <option value="malware">Malware</option>
+                            <option value="phishing">Phishing</option>
+                            <option value="blacklisted">Чёрный список</option>
+                            <option value="ok">Безопасные</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead><tr><th>ID</th><th>Slug</th><th>URL</th><th>Статус</th><th>Причина</th><th>Пользователь</th><th>Действия</th></tr></thead>
+                        <tbody id="admin-mod-body"></tbody>
+                    </table>
+                </div>
+                <div class="admin-pagination" id="admin-mod-pagination"></div>
+            </div>
+            <div class="admin-section">
+                <h3>Реклама при переходе (Free тариф)</h3>
+                <div class="ad-settings-form" id="ad-settings-form">
+                    <div class="form-field-inline">
+                        <label>Включена</label>
+                        <label class="toggle"><input type="checkbox" id="ad-enabled"><span class="toggle-slider"></span></label>
+                    </div>
+                    <div class="form-field-inline">
+                        <label>Задержка (сек)</label>
+                        <input type="number" id="ad-delay" class="input-small" min="1" max="30" value="5" style="width:80px">
+                    </div>
+                    <div class="form-field-inline">
+                        <label>Заголовок</label>
+                        <input type="text" id="ad-title" class="input-small" placeholder="Подождите..." style="flex:1">
+                    </div>
+                    <div class="form-field-inline">
+                        <label>Кнопка</label>
+                        <input type="text" id="ad-skip-text" class="input-small" placeholder="Перейти к ссылке" style="flex:1">
+                    </div>
+                    <div class="form-field-inline">
+                        <label>Освобождённые тарифы</label>
+                        <input type="text" id="ad-exempt" class="input-small" placeholder="pro,business" style="flex:1">
+                    </div>
+                    <div class="form-field-full">
+                        <label>HTML рекламного блока (iframe Яндекс.Рекламы и т.д.)</label>
+                        <textarea id="ad-html" class="input-textarea" rows="4" placeholder='<iframe src="..." width="300" height="250"></iframe>'></textarea>
+                    </div>
+                    <div class="ad-preview-box">
+                        <label>Предпросмотр</label>
+                        <button class="btn-ghost" id="btn-preview-ad" style="margin-left:8px;">Открыть в новом окне</button>
+                    </div>
+                    <button class="btn-primary" onclick="saveAdSettings()" style="max-width:200px">Сохранить</button>
+                </div>
+            </div>
+            <div class="admin-section">
+                <h3>Системные настройки</h3>
+                <button class="btn-primary" onclick="loadSystemSettings()" style="max-width:200px;margin-bottom:16px;">Загрузить настройки</button>
+                <div class="system-settings" id="system-settings" style="display:none;">
+                    <div class="settings-grid" id="settings-grid"></div>
+                    <button class="btn-primary" onclick="saveSystemSettings()" style="max-width:200px;margin-top:16px;">Сохранить изменения</button>
+                </div>
+            </div>
+            <div class="admin-section">
+                <div class="admin-section-header">
+                    <h3>Промокоды</h3>
+                    <button class="btn-primary" onclick="showCreatePromocode()" style="max-width:180px;margin-bottom:16px;">Создать промокод</button>
+                </div>
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead><tr><th>Код</th><th>Тариф</th><th>Дней</th><th>Использовано</th><th>Лимит</th><th>Статус</th><th>Действия</th></tr></thead>
+                        <tbody id="admin-promo-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="admin-section">
+                <h3>Очистка системы</h3>
+                <p class="dash-desc">Удалить просроченные ссылки и старые данные переходов (старше 90 дней)</p>
+                <button class="btn-primary" onclick="runCleanup()" style="max-width:200px;">Запустить очистку</button>
+                <div id="cleanup-result" style="margin-top:12px;display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div class="modal-overlay" id="stats-modal" style="display:none;">
+        <div class="modal-card modal-wide">
+            <button class="modal-close" onclick="hideStats()">&times;</button>
+            <h2 class="modal-title" id="stats-title">Статистика ссылки</h2>
+            <div class="stats-charts">
+                <canvas id="clicks-chart" width="400" height="200"></canvas>
+            </div>
+            <div class="stats-grid" id="stats-grid"></div>
+        </div>
+    </div>
+
+    <!-- QR Modal -->
+    <div class="modal-overlay" id="qr-modal" style="display:none;">
+        <div class="modal-card modal-narrow" style="text-align:center;">
+            <button class="modal-close" onclick="hideQr()">&times;</button>
+            <h2 class="modal-title" id="qr-modal-title">QR Код</h2>
+            <img id="qr-modal-img" class="qr-modal-img" alt="QR Code">
+            <div class="qr-design-section" id="qr-design" style="display:none;margin-top:16px;text-align:left;">
+                <div class="form-field">
+                    <label style="color:#555;font-size:13px;">Цвет QR-кода</label>
+                    <input type="color" id="qr-fill-color" value="#000000" style="width:60px;height:40px;border:none;cursor:pointer;">
+                </div>
+                <div class="form-field">
+                    <label style="color:#555;font-size:13px;">Фон</label>
+                    <input type="color" id="qr-back-color" value="#ffffff" style="width:60px;height:40px;border:none;cursor:pointer;">
+                </div>
+                <button class="btn-light" onclick="updateQRCustom()" style="margin-top:8px;">Применить</button>
+            </div>
+            <div style="margin-top:16px;">
+                <a class="btn-ghost-modal" onclick="document.getElementById('qr-design').style.display=document.getElementById('qr-design').style.display==='none'?'grid':'none'">🎨 Настроить дизайн</a>
+            </div>
+            <p class="qr-modal-url" id="qr-modal-url"></p>
+            <a id="qr-modal-download" class="btn-primary" download="qr-code.png" style="display:inline-block;text-decoration:none;margin-top:16px;">Скачать PNG</a>
+        </div>
+    </div>
+
+    <!-- Verify Page -->
+    <div class="verify-page" id="verify-page" style="display:none;">
+        <div class="verify-card">
+            <div class="verify-spinner" id="verify-spinner"></div>
+            <div class="verify-status" id="verify-status">
+                <h2 id="verify-title">Подтверждение email...</h2>
+                <p id="verify-message"></p>
+            </div>
+            <div id="verify-actions" style="display:none;">
+                <button class="btn-primary" id="verify-btn">Войти</button>
+                <button class="btn-ghost" id="verify-resend-btn" onclick="resendVerificationFromUrl()" style="margin-top:12px;">Отправить письмо повторно</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=51"></script>
+    
+    <!-- Footer Dock -->
+    <footer class="site-footer">
+        <div class="footer-content">
+            <div class="footer-brand">QNTX.Beacon</div>
+            <div class="footer-links">
+                <a href="/api-docs" target="_blank">API</a>
+                <a href="https://t.me/qntxru_bot" target="_blank">Бот</a>
+                <a href="mailto:qntx-info@list.ru">Контакты</a>
+            </div>
+            <div class="footer-copy">&copy; 2026</div>
+        </div>
+    </footer>
+</body>
+</html>
