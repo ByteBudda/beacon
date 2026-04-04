@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="QNTX.Beacon - профессиональный сервис сокращения ссылок с аналитикой, QR-кодами и защитой. Создавайте короткие ссылки, отслеживайте клики и повышайте охват.">
+    <meta name="keywords" content="сокращение ссылок, url shortener, qr код, аналитика ссылок, партнерская программа">
+    <meta name="author" content="QNTX.Beacon">
+    <meta property="og:title" content="QNTX.Beacon - Сокращайте ссылки">
+    <meta property="og:description" content="Профессиональный сервис сокращения ссылок с аналитикой и QR-кодами">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="QNTX.Beacon">
+    <meta name="twitter:description" content="Профессиональный сервис сокращения ссылок">
+    <title>QNTX.Beacon - Сокращайте ссылки, увеличивайте охват</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/chart.min.js"></script>
+</head>
+<body>
+    <div class="bg-image"></div>
+    <div class="bg-overlay"></div>
+
+    <header class="topbar">
+        <span class="brand" onclick="goHome()">QNTX.Beacon</span>
+        <div class="topbar-right">
+            <button class="btn-ghost" onclick="showAuth('login')">Войти</button>
+            <button class="btn-light" onclick="showAuth('register')">Создать аккаунт</button>
+        </div>
+    </header>
+
+    <main class="hero">
+        <h1 class="hero-title">Сокращайте ссылки,<br>увеличивайте охват.</h1>
+        <p class="hero-subtitle">Профессиональный сервис сокращения ссылок с аналитикой, QR-кодами и защитой.</p>
+
+        <div class="search-box">
+            <form class="search-form" onsubmit="event.preventDefault(); shortenUrl();">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <input type="url" id="hero-url" placeholder="Вставьте длинную ссылку..." required autocomplete="off">
+                <button type="submit" class="btn-shorten">Сократить</button>
+            </form>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Аналитика</h3>
+                <p>Отслеживайте клики по времени, устройствам и источникам</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📱</div>
+                <h3>QR-коды</h3>
+                <p>Генерируйте QR-коды с вашими цветами</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>Защита</h3>
+                <p>Парольная защита и гео-таргетинг</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎁</div>
+                <h3>Бонусы</h3>
+                <p>Приглашайте друзей и получайте бонусы</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="footer-content">
+            <div class="footer-brand">QNTX.Beacon</div>
+            <div class="footer-links">
+                <a href="/api-docs">API</a>
+                <a href="https://t.me/qntxru_bot" target="_blank">Бот</a>
+                <a href="mailto:qntx-info@list.ru">Контакты</a>
+            </div>
+            <div class="footer-copy">&copy; 2026 QNTX.Beacon</div>
+        </div>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

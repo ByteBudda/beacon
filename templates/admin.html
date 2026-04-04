@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QNTX Admin</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #00d4ff; margin-bottom: 20px; }
+        .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav button { padding: 10px 20px; background: #16213e; border: 1px solid #0f3460; color: #eee; cursor: pointer; border-radius: 4px; }
+        .nav button:hover, .nav button.active { background: #0f3460; border-color: #00d4ff; }
+        .card { background: #16213e; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat { background: #0f3460; padding: 15px; border-radius: 4px; text-align: center; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #00d4ff; }
+        .stat-label { font-size: 12px; color: #888; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #0f3460; }
+        th { color: #00d4ff; }
+        .btn { padding: 5px 10px; background: #0f3460; border: none; color: #00d4ff; cursor: pointer; border-radius: 4px; }
+        .btn:hover { background: #00d4ff; color: #1a1a2e; }
+        input, select { padding: 8px; background: #0f3460; border: 1px solid #16213e; color: #eee; border-radius: 4px; }
+        .search-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-bar input { flex: 1; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .badge-free { background: #444; }
+        .badge-pro { background: #00d4ff; color: #1a1a2e; }
+        .badge-business { background: #ffd700; color: #1a1a2e; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .user-detail { margin-top: 20px; }
+        .referral { display: flex; align-items: center; gap: 10px; padding: 10px; background: #0f3460; border-radius: 4px; margin-bottom: 10px; }
+        #loading { display: none; text-align: center; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>QNTX Admin</h1>
+        
+        <div class="nav">
+            <button class="active" onclick="showSection('users')">Пользователи</button>
+            <button onclick="showSection('stats')">Статистика</button>
+            <button onclick="showSection('links')">Ссылки</button>
+            <button onclick="showSection('payments')">Платежи</button>
+        </div>
+
+        <!-- Users Section -->
+        <div id="users" class="section active">
+            <div class="search-bar">
+                <input type="text" id="searchUsers" placeholder="Поиск по email или username..." oninput="searchUsers()">
+                <select id="filterPlan" onchange="loadUsers()">
+                    <option value="">Все планы</option>
+                    <option value="free">Free</option>
+                    <option value="pro">Pro</option>
+                    <option value="business">Business</option>
+                </select>
+            </div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Plan</th>
+                            <th>Links</th>
+                            <th>Clicks</th>
+                            <th>Verified</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- User Detail Section -->
+        <div id="userDetail" class="section">
+            <button class="btn" onclick="showSection('users')">← Назад</button>
+            <div class="card user-detail" id="userContent"></div>
+            <div class="card">
+                <h3>Referrals</h3>
+                <div id="referralsList"></div>
+            </div>
+        </div>
+
+        <!-- Stats Section -->
+        <div id="stats" class="section">
+            <div class="stats" id="statsGrid"></div>
+        </div>
+
+        <div id="loading">Загрузка...</div>
+    </div>
+
+    <script>
+        const API = '';
+        let adminToken = localStorage.getItem('access_token');
+
+        async function api(endpoint, method = 'GET', body = null) {
+            const headers = { 'Authorization': 'Bearer ' + adminToken };
+            if (body) {
+                headers['Content-Type'] = 'application/json';
+                body = JSON.stringify(body);
+            }
+            const res = await fetch(endpoint, { method, headers, body });
+            return res.json();
+        }
+
+        async function login() {
+            const email = prompt('Admin email:');
+            const password = prompt('Admin password:');
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (data.access_token) {
+                adminToken = data.access_token;
+                localStorage.setItem('access_token', data.access_token);
+                loadUsers();
+            } else {
+                alert('Login failed');
+            }
+        }
+
+        async function loadUsers() {
+            const search = document.getElementById('searchUsers').value;
+            const plan = document.getElementById('filterPlan').value;
+            let url = '/api/admin/users?limit=100';
+            if (search) url += '&search=' + search;
+            if (plan) url += '&plan=' + plan;
+            
+            const data = await api(url);
+            const tbody = document.getElementById('usersTable');
+            tbody.innerHTML = data.items.map(u => `
+                <tr>
+                    <td>${u.id}</td>
+                    <td>${u.username}</td>
+                    <td>${u.email}</td>
+                    <td><span class="badge badge-${u.plan}">${u.plan}</span></td>
+                    <td>${u.links_count}</td>
+                    <td>${u.total_clicks}</td>
+                    <td>${u.email_verified ? '✓' : '✗'}</td>
+                    <td>
+                        <button class="btn" onclick="viewUser(${u.id})">View</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function viewUser(id) {
+            const user = await api('/api/admin/users/' + id);
+            const referrals = await api('/api/admin/users/' + id + '/referrals');
+            
+            document.getElementById('userContent').innerHTML = `
+                <h2>${user.username}</h2>
+                <p>Email: ${user.email}</p>
+                <p>Plan: ${user.plan}</p>
+                <p>Role: ${user.role}</p>
+                <p>Links: ${user.links_count}</p>
+                <p>Clicks: ${user.total_clicks}</p>
+                <p>Verified: ${user.email_verified ? 'Yes' : 'No'}</p>
+                ${user.referrer ? `<p>Referrer: ${user.referrer.username} (${user.referrer.email})</p>` : ''}
+            `;
+            
+            document.getElementById('referralsList').innerHTML = referrals.referrals.length ? 
+                referrals.referrals.map(r => `
+                    <div class="referral">
+                        <span>${r.username}</span>
+                        <span>${r.email}</span>
+                        <span class="badge badge-${r.plan}">${r.plan}</span>
+                    </div>
+                `).join('') : '<p>No referrals</p>';
+            
+            showSection('userDetail');
+        }
+
+        async function loadStats() {
+            const data = await api('/api/admin/stats');
+            document.getElementById('statsGrid').innerHTML = `
+                <div class="stat"><div class="stat-value">${data.total_users}</div><div class="stat-label">Users</div></div>
+                <div class="stat"><div class="stat-value">${data.active_users}</div><div class="stat-label">Active</div></div>
+                <div class="stat"><div class="stat-value">${data.total_links}</div><div class="stat-label">Links</div></div>
+                <div class="stat"><div class="stat-value">${data.total_clicks}</div><div class="stat-label">Clicks</div></div>
+            `;
+        }
+
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+            
+            if (id === 'stats') loadStats();
+            if (id === 'users') loadUsers();
+        }
+
+        function searchUsers() {
+            loadUsers();
+        }
+
+        // Init
+        if (!adminToken) {
+            login();
+        } else {
+            loadUsers();
+        }
+    </script>
+</body>
+</html>

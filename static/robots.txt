@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /dashboard
+Disallow: /links
+Disallow: /admin
+Disallow: /api/auth
+Allow: /
+
+User-agent: Yandex
+Disallow: /dashboard
+Disallow: /links
+Disallow: /admin
+
+Sitemap: https://qntx.ru/sitemap.xml

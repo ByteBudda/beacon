@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QNTX.Beacon — Панель управления</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root { 
+            --primary: #6366f1; --primary-dark: #4f46e5;
+            --bg: #0f0f23; --bg2: #1a1a2e; --bg3: #252542;
+            --text: #e2e8f0; --text-muted: #94a3b8;
+            --accent: #22d3ee; --success: #22c55e; --danger: #ef4444;
+        }
+        body { 
+            font-family: 'Inter', -apple-system, system-ui, sans-serif; 
+            background: var(--bg); color: var(--text); min-height: 100vh; 
+        }
+        
+        /* Auth Screen */
+        .auth-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--bg) 0%, #1e1e3f 100%);
+        }
+        .auth-box {
+            background: var(--bg2); border-radius: 16px; padding: 40px;
+            width: 100%; max-width: 400px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        .auth-logo {
+            text-align: center; margin-bottom: 30px;
+        }
+        .auth-logo h1 {
+            background: linear-gradient(135deg, var(--accent), var(--primary));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-size: 32px; font-weight: 800;
+        }
+        .auth-logo p { color: var(--text-muted); margin-top: 8px; }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 14px; }
+        .form-group input {
+            width: 100%; padding: 14px 16px;
+            background: var(--bg3); border: 1px solid transparent;
+            color: var(--text); border-radius: 8px;
+            font-size: 15px; transition: all 0.2s;
+        }
+        .form-group input:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+        }
+        
+        .btn {
+            width: 100%; padding: 14px;
+            background: var(--primary); border: none;
+            color: white; border-radius: 8px;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: var(--primary-dark); }
+        .btn-google { background: #4285f4; }
+        .btn-outline { background: transparent; border: 1px solid var(--bg3); }
+        
+        .auth-divider {
+            display: flex; align-items: center; gap: 16px;
+            margin: 24px 0; color: var(--text-muted); font-size: 13px;
+        }
+        .auth-divider::before, .auth-divider::after {
+            content: ''; flex: 1; height: 1px; background: var(--bg3);
+        }
+        
+        .auth-switch {
+            text-align: center; margin-top: 20px;
+            color: var(--text-muted); font-size: 14px;
+        }
+        .auth-switch a { color: var(--accent); text-decoration: none; }
+        
+        .error-msg {
+            background: rgba(239,68,68,0.1); border: 1px solid var(--danger);
+            color: var(--danger); padding: 12px; border-radius: 8px;
+            margin-bottom: 16px; font-size: 14px;
+        }
+
+        /* Dashboard */
+        .dashboard { display: none; }
+        .dashboard.active { display: block; }
+        
+        .header {
+            background: var(--bg2); padding: 16px 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--bg3);
+        }
+        .header h1 {
+            font-size: 20px; background: linear-gradient(135deg, var(--accent), var(--primary));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .user-menu { display: flex; align-items: center; gap: 16px; }
+        .user-avatar {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: var(--primary); display: flex;
+            align-items: center; justify-content: center;
+            font-weight: 600; font-size: 14px;
+        }
+        
+        .nav {
+            background: var(--bg2); padding: 12px 24px;
+            display: flex; gap: 8px; border-bottom: 1px solid var(--bg3);
+            overflow-x: auto;
+        }
+        .nav button {
+            padding: 10px 16px; background: transparent; border: none;
+            color: var(--text-muted); border-radius: 6px; cursor: pointer;
+            white-space: nowrap; transition: all 0.2s;
+        }
+        .nav button:hover { background: var(--bg3); color: var(--text); }
+        .nav button.active { background: var(--primary); color: white; }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--bg2); border-radius: 12px; padding: 20px;
+            border: 1px solid var(--bg3);
+        }
+        .stat-card .value {
+            font-size: 28px; font-weight: 700; color: var(--accent);
+        }
+        .stat-card .label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        .stat-card .sub { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+        
+        .card {
+            background: var(--bg2); border-radius: 12px;
+            border: 1px solid var(--bg3); margin-bottom: 24px;
+        }
+        .card-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--bg3);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-header h2 { font-size: 16px; }
+        .card-body { padding: 20px; }
+        
+        .link-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 0; border-bottom: 1px solid var(--bg3);
+        }
+        .link-item:last-child { border-bottom: none; }
+        .link-info h3 { font-size: 15px; margin-bottom: 4px; }
+        .link-info h3 a { color: var(--accent); text-decoration: none; }
+        .link-info p { font-size: 12px; color: var(--text-muted); }
+        .link-stats { text-align: right; }
+        .link-stats .clicks { font-size: 20px; font-weight: 700; color: var(--accent); }
+        .link-stats .label { font-size: 11px; color: var(--text-muted); }
+        
+        .empty { text-align: center; padding: 40px; color: var(--text-muted); }
+        
+        .btn-small { padding: 8px 16px; background: var(--bg3); border: none; color: var(--text); border-radius: 6px; cursor: pointer; }
+        .btn-small:hover { background: var(--primary); }
+        
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        .badge-free { background: var(--bg3); }
+        .badge-pro { background: var(--primary); color: white; }
+        .badge-business { background: #f59e0b; color: #000; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Auth Screen -->
+    <div class="auth-container" id="authScreen">
+        <div class="auth-box">
+            <div class="auth-logo">
+                <h1>QNTX.Beacon</h1>
+                <p>Сокра��ай ��сылки - получай аналитику</p>
+            </div>
+            
+            <div id="authError" style="display:none"></div>
+            
+            <!-- Login Form -->
+            <div id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" placeholder="example@mail.ru">
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••">
+                </div>
+                <button class="btn" onclick="login()">Войти</button>
+                
+                <div class="auth-divider">или</div>
+                
+                <button class="btn btn-outline" onclick="showRegister()">Создать аккаунт</button>
+                
+                <div class="auth-switch">
+                    Нет аккаунта? <a href="#" onclick="showRegister()">Зарегистрироваться</a>
+                </div>
+            </div>
+            
+            <!-- Register Form -->
+            <div id="registerForm" style="display:none">
+                <div class="form-group">
+                    <label>Имя пользователя</label>
+                    <input type="text" id="regUsername" placeholder="username">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="regEmail" placeholder="example@mail.ru">
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="regPassword" placeholder="минимум 8 символов">
+                </div>
+                <button class="btn" onclick="register()">Зарегистрироваться</button>
+                
+                <div class="auth-switch">
+                    Уже есть аккаунт? <a href="#" onclick="showLogin()">Войти</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard" id="dashboard">
+        <div class="header">
+            <h1>QNTX.Beacon</h1>
+            <div class="user-menu">
+                <span id="userEmail"></span>
+                <div class="user-avatar" id="userAvatar">?</div>
+                <button class="btn-small" onclick="logout()">Выйти</button>
+            </div>
+        </div>
+        
+        <div class="nav">
+            <button class="active" onclick="showPage('links')">Ссылки</button>
+            <button onclick="showPage('create')">Создать</button>
+            <button onclick="showPage('stats')">Статистика</button>
+            <button onclick="showPage('account')">Аккаунт</button>
+            <button onclick="showPage('admin')" id="adminNav" style="display:none">Админ</button>
+        </div>
+        
+        <div class="container">
+            <!-- Links Page -->
+            <div id="pageLinks">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="value" id="linksCount">-</div>
+                        <div class="label">Ссылок</div>
+                        <div class="sub">из <span id="linksLimit">-</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="clicksCount">-</div>
+                        <div class="label">Переходов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value"><span class="badge" id="planBadge">Free</span></div>
+                        <div class="label">Тариф</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="referralsCount">-</div>
+                        <div class="label">Рефералов</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Ваши ссылки</h2>
+                        <button class="btn-small" onclick="showPage('create')">+ Новая</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="linksList"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Create Page -->
+            <div id="pageCreate" style="display:none">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Создать ссылку</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>Оригинальный URL</label>
+                            <input type="url" id="createUrl" placeholder="https://example.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Название (необязательно)</label>
+                            <input type="text" id="createTitle" placeholder="Моя ссылка">
+                        </div>
+                        <button class="btn" onclick="createLink()">Создать</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Массовое создание</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>URLs (по одному на строку)</label>
+                            <textarea id="bulkUrls" rows="5" style="width:100%;background:var(--bg3);border:1px solid var(--bg3);color:var(--text);border-radius:8px;padding:12px;" placeholder="https://site1.com&#10;https://site2.com"></textarea>
+                        </div>
+                        <button class="btn" onclick="bulkCreate()">Создать все</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Page -->
+            <div id="pageStats" style="display:none">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="value" id="totalLinks">-</div>
+                        <div class="label">Всего ссылок</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="totalClicks">-</div>
+                        <div class="label">Всего переходов</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Account Page -->
+            <div id="pageAccount" style="display:none">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Профиль</h2>
+                    </div>
+                    <div class="card-body" id="profileInfo"></div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>API ключ</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <input type="text" id="apiKey" readonly style="background:var(--bg3);">
+                        </div>
+                        <button class="btn-small" onclick="generateApiKey()">Сгенерировать</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Подписка</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="subscriptionInfo"></div>
+                        <button class="btn-small" onclick="startTrial()">Начать PRO Trial</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Admin Page -->
+            <div id="pageAdmin" style="display:none">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="value" id="adminUsers">-</div>
+                        <div class="label">Пользователей</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="adminLinks">-</div>
+                        <div class="label">Ссылок</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Пользователи</h2>
+                    </div>
+                    <div class="card-body">
+                        <table style="width:100%">
+                            <thead>
+                                <tr style="text-align:left;color:var(--text-muted)">
+                                    <th>ID</th><th>Имя</th><th>Email</th><th>Тариф</th><th>Ссылок</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminUsersList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('access_token');
+        let user = null;
+
+        async function api(url, method = 'GET', body = null) {
+            const headers = { 'Authorization': 'Bearer ' + token };
+            if (body) {
+                headers['Content-Type'] = 'application/json';
+                body = JSON.stringify(body);
+            }
+            const res = await fetch(url, { method, headers, body ? { body } : {} });
+            return res.json();
+        }
+
+        function showAuth(type) {
+            document.getElementById('loginForm').style.display = type === 'login' ? 'block' : 'none';
+            document.getElementById('registerForm').style.display = type === 'register' ? 'block' : 'none';
+        }
+        
+        function showLogin() { showAuth('login'); }
+        function showRegister() { showAuth('register'); }
+
+        function showError(msg) {
+            const el = document.getElementById('authError');
+            el.textContent = msg;
+            el.style.display = 'block';
+        }
+
+        async function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            
+            if (data.access_token) {
+                token = data.access_token;
+                user = data.user;
+                localStorage.setItem('access_token', token);
+                localStorage.setItem('user_email', user.email);
+                localStorage.setItem('user_role', user.role);
+                showDashboard();
+            } else {
+                showError(data.detail || 'Ошибка входа');
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password })
+            });
+            const data = await res.json();
+            
+            if (data.access_token) {
+                token = data.access_token;
+                user = data.user;
+                localStorage.setItem('access_token', token);
+                localStorage.setItem('user_email', user.email);
+                localStorage.setItem('user_role', user.role);
+                showDashboard();
+            } else {
+                showError(data.detail || 'Ошибка регистрации');
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('dashboard').classList.add('active');
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            const acc = await api('/api/account');
+            
+            document.getElementById('userEmail').textContent = acc.email;
+            document.getElementById('userAvatar').textContent = acc.username[0].toUpperCase();
+            document.getElementById('linksCount').textContent = acc.links_count;
+            document.getElementById('linksLimit').textContent = acc.plan_limit;
+            document.getElementById('clicksCount').textContent = acc.total_clicks;
+            document.getElementById('planBadge').textContent = acc.plan.toUpperCase();
+            document.getElementById('planBadge').className = 'badge badge-' + acc.plan;
+            document.getElementById('referralsCount').textContent = acc.referral_count || 0;
+            
+            document.getElementById('profileInfo').innerHTML = `
+                <p><strong>Имя:</strong> ${acc.username}</p>
+                <p><strong>Email:</strong> ${acc.email}</p>
+                <p><strong>Тариф:</strong> ${acc.plan}</p>
+            `;
+            
+            document.getElementById('subscriptionInfo').innerHTML = `
+                <p>Текущий тариф: ${acc.plan}</p>
+                <p>Ссылок: ${acc.links_count} / ${acc.plan_limit}</p>
+            `;
+            
+            if (acc.api_key) {
+                document.getElementById('apiKey').value = acc.api_key;
+            }
+            
+            if (user?.role === 'admin' || acc.role === 'admin') {
+                document.getElementById('adminNav').style.display = 'block';
+                loadAdmin();
+            }
+            
+            loadLinks();
+        }
+
+        async function loadLinks() {
+            const data = await api('/api/links');
+            const html = data.links.map(l => `
+                <div class="link-item">
+                    <div class="link-info">
+                        <h3><a href="/s/${l.slug}" target="_blank">${l.title || l.url}</a></h3>
+                        <p>${l.url}</p>
+                    </div>
+                    <div class="link-stats">
+                        <div class="clicks">${l.clicks}</div>
+                        <div class="label">переходов</div>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('linksList').innerHTML = html || '<div class="empty">Ссылок пока нет</div>';
+        }
+
+        async function createLink() {
+            const url = document.getElementById('createUrl').value;
+            const title = document.getElementById('createTitle').value;
+            if (!url) return alert('Введите URL');
+            
+            const data = await api('/api/links', 'POST', { url, title });
+            if (data.slug) {
+                document.getElementById('createUrl').value = '';
+                document.getElementById('createTitle').value = '';
+                loadLinks();
+                showPage('links');
+            }
+        }
+
+        async function bulkCreate() {
+            const urls = document.getElementById('bulkUrls').value.split('\n').filter(u => u.trim());
+            if (!urls.length) return alert('Введите URLs');
+            
+            const data = await api('/api/links/bulk', 'POST', { urls });
+            alert('Создано ' + data.results.filter(r => r.slug).length + ' ссылок');
+            loadLinks();
+            document.getElementById('bulkUrls').value = '';
+            showPage('links');
+        }
+
+        async function generateApiKey() {
+            const data = await api('/api/account/generate-key', 'POST');
+            if (data.api_key) {
+                document.getElementById('apiKey').value = data.api_key;
+            }
+        }
+
+        async function startTrial() {
+            const data = await api('/api/payments/trial', 'POST');
+            alert(data.status || data.detail || 'Ошибка');
+            loadDashboard();
+        }
+
+        async function loadAdmin() {
+            const data = await api('/api/admin/stats');
+            document.getElementById('adminUsers').textContent = data.total_users;
+            document.getElementById('adminLinks').textContent = data.total_links;
+            
+            const users = await api('/api/admin/users?limit=50');
+            const html = users.items.map(u => `
+                <tr>
+                    <td>${u.id}</td>
+                    <td>${u.username}</td>
+                    <td>${u.email}</td>
+                    <td><span class="badge badge-${u.plan}">${u.plan}</span></td>
+                    <td>${u.links_count}</td>
+                </tr>
+            `).join('');
+            document.getElementById('adminUsersList').innerHTML = html;
+        }
+
+        function showPage(id) {
+            document.querySelectorAll('.container > div').forEach(d => d.style.display = 'none');
+            document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById('page' + id).style.display = 'block';
+            
+            const navBtn = Array.from(document.querySelectorAll('.nav button')).find(b => b.textContent.includes(id === 'links' ? 'Ссылки' : id === 'create' ? 'Создать' : id === 'stats' ? 'Статистика' : id === 'account' ? 'Аккаунт' : id === 'admin' ? 'Админ' : '');
+            if (navBtn) navBtn.classList.add('active');
+        }
+
+        function logout() {
+            localStorage.clear();
+            location.reload();
+        }
+
+        // Init
+        if (token) {
+            showDashboard();
+        }
+    </script>
+</body>
+</html>

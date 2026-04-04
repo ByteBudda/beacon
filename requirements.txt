@@ -1,0 +1,45 @@
+# Core
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+aiosqlite>=0.19.0
+pydantic[email]>=2.5.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+jinja2>=3.1.0
+
+# Auth
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1
+
+# QR Code
+qrcode[pil]>=7.4.2
+Pillow>=10.0.0
+
+# Analytics
+user-agents>=2.2.0
+
+# Payments
+yookassa>=2.4.0
+
+# HTTP
+httpx>=0.25.0
+
+# Redis (optional — for production rate limiting with multiple workers)
+redis[hiredis]>=5.0.0
+
+# PostgreSQL (optional — replaces SQLite in production)
+# For local testing: pip install asyncpg sqlalchemy[asyncio]
+# In production: DATABASE_URL=postgresql://user:pass@localhost:5432/beacon
+asyncpg>=0.29.0
+sqlalchemy[asyncio]>=2.0.23
+alembic>=1.13.0
+
+# Monitoring (optional — error tracking)
+# sentry-sdk[fastapi]>=1.38.0
+
+# GeoIP (optional — country/city from IP)
+# geoip2>=4.8.0
+
+# Telegram Bot (optional — create links via Telegram)
+python-telegram-bot>=20.7

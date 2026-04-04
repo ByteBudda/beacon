@@ -1,0 +1,32 @@
+{
+    "manifest_version": 3,
+    "name": "QNTX.Beacon — Сократить ссылку",
+    "version": "1.0.0",
+    "description": "Сокращайте ссылки одной кнопкой с QNTX.Beacon",
+    "permissions": ["activeTab", "clipboardWrite", "storage"],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icon16.png",
+            "48": "icon48.png",
+            "128": "icon128.png"
+        },
+        "default_title": "QNTX.Beacon — Сократить"
+    },
+    "icons": {
+        "16": "icon16.png",
+        "48": "icon48.png",
+        "128": "icon128.png"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "commands": {
+        "shorten-current": {
+            "suggested_key": {
+                "default": "Alt+S"
+            },
+            "description": "Сократить текущую страницу"
+        }
+    }
+}
