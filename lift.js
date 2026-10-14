@@ -1,14 +1,18 @@
 /**
  * Полноценный боевой JS-плагин Liftw для системы QuickJS.
- * Исправлено: _decodeIfBase64 (#2 / //_//), _decodePlayerValue для [1080p]//_//b64,
- * configRegex с JSON-ключами, приоритет качества, диагностический лог.
+ * Правки:
+ *  - _decodeIfBase64: корректное удаление разделителей //_//
+ *  - _decodePlayerValue: разбор [1080p]//_//b64,[720p]//_//b64
+ *  - configRegex: JSON-ключи ("file":"..."), src/source/url
+ *  - НОВОЕ: извлечение потока из download (URL-encoded master.m3u8)
+ *  - Приоритет качества 1080p → 720p → любой m3u8 → mp4
  */
 var plugin = globalThis.plugin = {
     meta: {
         name: "Lift",
         baseUrl: "https://api.liftw.ws",
         aliases: ["Lift", "Liftw", "Лифт", "Фильмы и сериалы", "Кино"],
-        domains: ["liftw.ws", "api.liftw.ws", "embed.liftw.ws", "interkh.com"],
+        domains: ["liftw.ws", "api.liftw.ws", "embed.liftw.ws", "interkh.com", "showvid.ws"],
         icon: "movie",
         requiresAuth: false
     },
@@ -79,9 +83,7 @@ var plugin = globalThis.plugin = {
             var arr = JSON.parse(trimmed);
             var results = [];
             for (var i = 0; i < arr.length; i++) {
-                if (arr[i]) {
-                    results.push(this._parseApiItem(arr[i], cat === "all" ? null : cat));
-                }
+                if (arr[i]) results.push(this._parseApiItem(arr[i], cat === "all" ? null : cat));
             }
             return results;
         } catch (e) {
@@ -315,7 +317,7 @@ var plugin = globalThis.plugin = {
             }
 
             if (!foundStream) {
-                this._log("no stream found, last html head: " + (usedHtml || "").substring(0, 300));
+                this._log("no stream found, last html head: " + (usedHtml || "").substring(0, 500));
                 return null;
             }
 
@@ -333,15 +335,25 @@ var plugin = globalThis.plugin = {
             var hostMatch = usedEmbedUrl.match(/^(https?:\/\/[^/]+)/);
             if (hostMatch) originHost = hostMatch[1];
 
+            // Для interkh.com плеер обычно требует Referer именно embed-страницы
+            var streamHost = "";
+            var streamHostMatch = stream.match(/^https?:\/\/([^/]+)/);
+            if (streamHostMatch) streamHost = streamHostMatch[1];
+
             var playerHeaders = {
                 "User-Agent": this.USER_AGENT,
                 "Origin": originHost,
                 "Referer": originHost + "/"
             };
 
+            if (stream.indexOf("interkh.com") !== -1) {
+                playerHeaders["Referer"] = usedEmbedUrl;
+                playerHeaders["Origin"] = originHost;
+            }
+
             return {
                 streamUrl: stream,
-                mimeType: stream.indexOf(".mp4") !== -1 ? "video/mp4" : "application/x-mpegURL",
+                mimeType: stream.indexOf(".mp4") !== -1 && stream.indexOf(".m3u8") === -1 ? "video/mp4" : "application/x-mpegURL",
                 width: 1920,
                 height: 1080,
                 headers: playerHeaders
@@ -373,9 +385,7 @@ var plugin = globalThis.plugin = {
         }
         var rawJson = JSON.stringify(obj);
         var m = rawJson.match(/["']((?:https?:)?\/\/[^"']*(?:embed|interkh|play|iframe)[^"']*)["']/i);
-        if (m && m[1]) {
-            return this._normalizeIframe(m[1]);
-        }
+        if (m && m[1]) return this._normalizeIframe(m[1]);
         return "";
     },
 
@@ -415,9 +425,7 @@ var plugin = globalThis.plugin = {
                     var extracted = this._extractIframeFromObj(json);
                     if (extracted) {
                         var withParams = appendParams(extracted);
-                        if (candidates.indexOf(withParams) === -1) {
-                            candidates.unshift(withParams);
-                        }
+                        if (candidates.indexOf(withParams) === -1) candidates.unshift(withParams);
                     }
                 } catch (_) {}
             }
@@ -425,7 +433,6 @@ var plugin = globalThis.plugin = {
             candidates.push(appendParams("https://liftw.ws/embed/" + mediaId));
         }
 
-        // убираем дубли и пустышки
         var unique = [];
         for (var i = 0; i < candidates.length; i++) {
             var c = candidates[i];
@@ -435,32 +442,39 @@ var plugin = globalThis.plugin = {
     },
 
     /**
-     * Разбор значения PlayerJS-поля (file / hls / sources):
-     *   "[1080p]//_//b64,[720p]//_//b64" → лучший URL
-     *   "#2b64"                            → URL
-     *   "https://...m3u8"                  → URL
+     * Разбор значения PlayerJS-поля.
+     * Поддерживает:
+     *   "[1080p]//_//b64,[720p]//_//b64"
+     *   "#2b64"
+     *   "//_//b64"
+     *   "https://...m3u8"
+     *   URL-encoded "%3A%2F%2F...master.m3u8..."
      */
     _decodePlayerValue: function (raw) {
         if (!raw) return null;
         var out = String(raw).trim();
         if (!out) return null;
 
-        // 1. Сначала пробуем как единое значение (в т.ч. #2 / //_// префикс)
-        var direct = this._decodeIfBase64(out);
+        // Сначала раскодируем URL-encoding (может прийти download=...)
+        var decoded = out;
+        try {
+            if (out.indexOf("%3A") !== -1 || out.indexOf("%2F") !== -1) {
+                decoded = decodeURIComponent(out.replace(/\\u0026/g, "&"));
+            }
+        } catch (_) {}
+
+        var direct = this._decodeIfBase64(decoded);
         var directUrl = this._pickBestStreamUrl(direct);
         if (directUrl && (directUrl.indexOf(".m3u8") !== -1 || directUrl.indexOf(".mp4") !== -1)) {
             return directUrl;
         }
 
-        // 2. Разбиваем на список качества по запятой
-        var parts = out.split(",");
+        var parts = decoded.split(",");
         if (parts.length > 1) {
             var urls = [];
             for (var i = 0; i < parts.length; i++) {
                 var p = parts[i].trim();
-                // снимаем "[1080p]" и подобные префиксы
                 p = p.replace(/^\[\s*[^\]]+\s*\]\s*/, "");
-                // иногда //_// склеен с префиксом качества без пробела
                 p = this._decodeIfBase64(p);
                 var u = this._pickBestStreamUrl(p);
                 if (u) urls.push(u);
@@ -477,19 +491,68 @@ var plugin = globalThis.plugin = {
 
     _extractStreamFromHtml: function (embedHtml, cleanEmbedUrl) {
         var html = String(embedHtml || "");
+        var self = this;
         var match;
 
-        // 1. Параметры плеера: file/hls/playlist/dash/stream/src/source/url (в т.ч. в JSON-кавычках)
+        // 0. download: "https://dl.showvid.ws/x-px?m=ENCODED_master.m3u8..."
+        var dlMatch = html.match(/["']?download["']?\s*:\s*["']([^"']+)["']/i);
+        if (dlMatch) {
+            var dlVal = dlMatch[1];
+            try {
+                dlVal = decodeURIComponent(dlVal.replace(/\\u0026/g, "&"));
+            } catch (_) {}
+            var m3u8InDl = dlVal.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
+            if (m3u8InDl) {
+                this._log("FOUND in download: " + m3u8InDl[1]);
+                return m3u8InDl[1];
+            }
+            // Иногда master.m3u8 зашит в ?m=
+            var mParam = dlVal.match(/[?&]m=([^&"'\s]+)/i);
+            if (mParam) {
+                var innerM3u8;
+                try { innerM3u8 = decodeURIComponent(mParam[1]); } catch (_) { innerM3u8 = mParam[1]; }
+                var innerMatch = innerM3u8.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
+                if (innerMatch) {
+                    this._log("FOUND in download?m=: " + innerMatch[1]);
+                    return innerMatch[1];
+                }
+            }
+        }
+
+        // 1. URL-encoded master.m3u8 в любом месте HTML
+        var encMatches = html.match(/https?%3A%2F%2F[^"'\s)]+master\.m3u8[^"'\s)]*/gi);
+        if (encMatches && encMatches.length > 0) {
+            for (var em = 0; em < encMatches.length; em++) {
+                try {
+                    var dec = decodeURIComponent(encMatches[em]);
+                    var realM = dec.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
+                    if (realM) {
+                        this._log("FOUND encoded master.m3u8: " + realM[1]);
+                        return realM[1];
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // 2. JSON-encoded URL (часто "https:\/\/...m3u8")
+        var slashEsc = html.match(/"https?:\\\/\\\/[^"]+\.m3u8[^"]*"/i);
+        if (slashEsc) {
+            var cleanS = slashEsc[0].slice(1, -1).replace(/\\\//g, "/");
+            this._log("FOUND slash-escaped m3u8: " + cleanS);
+            return cleanS;
+        }
+
+        // 3. Поля плеера: file/hls/playlist/dash/stream/src/source/url
         var configRegex = /["']?(?:hls|file|playlist|dash|stream|src|source|url)["']?\s*[:=]\s*["']([^"']{8,})["']/gi;
         while ((match = configRegex.exec(html)) !== null) {
             var rawVal = match[1].trim();
             if (rawVal.indexOf(".js") !== -1 || rawVal.indexOf(".css") !== -1 ||
                 rawVal.indexOf(".svg") !== -1 || rawVal.indexOf(".png") !== -1 ||
-                rawVal.indexOf(".jpg") !== -1) {
+                rawVal.indexOf(".jpg") !== -1 || rawVal.indexOf(".jpeg") !== -1) {
                 continue;
             }
 
-            var bestUrl = this._decodePlayerValue(rawVal);
+            var bestUrl = self._decodePlayerValue(rawVal);
             if (!bestUrl) continue;
 
             if (bestUrl.indexOf(".m3u8") !== -1 || bestUrl.indexOf(".mp4") !== -1 ||
@@ -497,35 +560,34 @@ var plugin = globalThis.plugin = {
                 return bestUrl;
             }
 
-            // Возможно это .txt/.json плейлист
             if (bestUrl.indexOf("http") === 0) {
-                var plHeaders = { "User-Agent": this.USER_AGENT, "Referer": cleanEmbedUrl };
+                var plHeaders = { "User-Agent": self.USER_AGENT, "Referer": cleanEmbedUrl };
                 var plTextRaw = bridge.request("GET", bestUrl, JSON.stringify(plHeaders), "") || "";
                 if (plTextRaw.indexOf("#EXTM3U") === 0) return bestUrl;
 
-                var plDecoded = this._decodeIfBase64(plTextRaw);
-                var subBest = this._pickBestStreamUrl(plDecoded);
+                var plDecoded = self._decodeIfBase64(plTextRaw);
+                var subBest = self._pickBestStreamUrl(plDecoded);
                 if (subBest) return subBest;
             }
         }
 
-        // 2. Зашифрованные строки PlayerJS где угодно
+        // 4. Зашифрованные строки PlayerJS (#2 / //_//)
         var b64Regex = /["']((?:#2|\/\/_\/\/)[A-Za-z0-9+/=_\/-]{20,})["']/g;
         while ((match = b64Regex.exec(html)) !== null) {
-            var dec = this._decodeIfBase64(match[1]);
-            var bUrl = this._pickBestStreamUrl(dec);
+            var decB64 = self._decodeIfBase64(match[1]);
+            var bUrl = self._pickBestStreamUrl(decB64);
             if (bUrl && (bUrl.indexOf(".m3u8") !== -1 || bUrl.indexOf(".mp4") !== -1)) {
                 return bUrl;
             }
         }
 
-        // 3. Прямой поиск m3u8 / mp4 в HTML
-        var directBest = this._pickBestStreamUrl(html);
+        // 5. Прямой поиск m3u8 / mp4 в HTML
+        var directBest = self._pickBestStreamUrl(html);
         if (directBest && (directBest.indexOf(".m3u8") !== -1 || directBest.indexOf(".mp4") !== -1)) {
             return directBest;
         }
 
-        // 4. Вложенный iframe-балансер
+        // 6. Вложенный iframe-балансер
         return this._resolveViaBalancer(html, cleanEmbedUrl);
     },
 
@@ -533,7 +595,6 @@ var plugin = globalThis.plugin = {
         if (!text) return null;
         var clean = String(text).replace(/\\\//g, "/").replace(/\\u0026/g, "&");
 
-        // Приоритет 1: m3u8
         var m3u8All = [];
         var m3u8Re = /(https?:\/\/[^,"'\s<>|\[\]{}]+\.m3u8[^,"'\s<>|\[\]{}]*)/gi;
         var m;
@@ -544,13 +605,11 @@ var plugin = globalThis.plugin = {
             return m3u8All[m3u8All.length - 1];
         }
 
-        // Приоритет 2: mp4
-        var mp4Re = /(https?:\/\/[^,"'\s<>|\[\]{}]+\.mp4[^,"'\s<>|\[\]{}]*)/gi;
         var mp4All = [];
+        var mp4Re = /(https?:\/\/[^,"'\s<>|\[\]{}]+\.mp4[^,"'\s<>|\[\]{}]*)/gi;
         while ((m = mp4Re.exec(clean)) !== null) mp4All.push(m[1]);
         if (mp4All.length > 0) return mp4All[mp4All.length - 1];
 
-        // Приоритет 3: любой http-URL
         var genericMatch = clean.match(/(https?:\/\/[^,"'|\[\]\s<>]+)/);
         return genericMatch ? genericMatch[1] : null;
     },
@@ -598,7 +657,6 @@ var plugin = globalThis.plugin = {
             }
         }
 
-        // Извлекаем параметры file/hls/src/etc. из HTML балансера
         var configRegex = /["']?(?:hls|file|playlist|dash|stream|src|source|url)["']?\s*[:=]\s*["']([^"']{8,})["']/gi;
         var m;
         while ((m = configRegex.exec(balancerHtml)) !== null) {
@@ -613,7 +671,6 @@ var plugin = globalThis.plugin = {
             return bStream;
         }
 
-        // Если балансер вложенный — рекурсируем один уровень
         var nestedIframe = balancerHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
         if (nestedIframe) {
             var nestedUrl = this._normalizeIframe(nestedIframe[1]);
@@ -717,10 +774,8 @@ var plugin = globalThis.plugin = {
     },
 
     /**
-     * Разбирает строку, закодированную PlayerJS:
-     *   "#2<b64>"       → декодирует base64
-     *   "//_//<b64>"    → декодирует base64
-     * Внутри base64 могут быть разделители "//_//" — их удаляем.
+     * PlayerJS: "#2<b64>" или "//_//<b64>".
+     * Внутри base64 могут встречаться разделители "//_//" — вырезаем их по всей строке.
      */
     _decodeIfBase64: function (s) {
         var trimmed = String(s || "").trim();
@@ -731,7 +786,6 @@ var plugin = globalThis.plugin = {
         else if (trimmed.indexOf("//_//") === 0) b64 = trimmed.substring(5);
         if (b64 === null) return trimmed;
 
-        // ВАЖНО: удаляем разделители //_// по всей строке, а не только в начале
         b64 = b64.split("//_//").join("");
 
         try {
