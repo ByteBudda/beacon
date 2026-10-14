@@ -4,7 +4,7 @@
  */
 var plugin = globalThis.plugin = {
     meta: {
-        name: "Liftw",
+        name: "Lift",
         baseUrl: "https://api.liftw.ws",
         aliases: ["Lift", "Лифт", "Фильмы и сериалы", "Кино"],
         domains: ["liftw.ws", "api.liftw.ws", "embed.liftw.ws", "interkh.com"],
