@@ -1,10 +1,15 @@
 /**
  * JS-порт рабочего Kotlin-плагина LiftwPlugin.
- * Логика извлечения потока 1:1 повторяет проверенный Kotlin-код.
+ * Логика извлечения потока 1:1 соответствует проверенному Kotlin-коду:
+ *   - узкий configRegex (hls|file|playlist|dash) + обязательное расширение .m3u8/.mp4/.txt/.json
+ *   - строгий поиск m3u8 в HTML
+ *   - iframe-балансер как fallback
+ *   - токен авторизации var lok = 1, xxx = "..."
+ *   - заголовки плеера: только User-Agent + Referer
  */
 var plugin = globalThis.plugin = {
     meta: {
-        name: "Lift",
+        name: "Liftw",
         baseUrl: "https://api.liftw.ws",
         aliases: ["Lift", "Лифт", "Фильмы и сериалы", "Кино"],
         domains: ["liftw.ws", "api.liftw.ws", "embed.liftw.ws", "interkh.com"],
@@ -246,7 +251,7 @@ var plugin = globalThis.plugin = {
                 thumbnail: finalPoster,
                 url: iframeUri.length > 0 ? iframeUri : infoUrl,
                 duration: durationMs,
-                views: desc,   // как в рабочем Kotlin: описание идёт в views
+                views: desc,
                 description: desc,
                 source: this.meta.name
             };
@@ -285,7 +290,6 @@ var plugin = globalThis.plugin = {
             var poster = rawPoster.length > 0 ? rawPoster + "#vertical" : "";
             var currentMediaId = String(root.id || mediaId || "0");
 
-            // Числовая сортировка сезонов
             var sortedSeasons = Object.keys(episodesObj)
                 .map(function (k) { return parseInt(k, 10); })
                 .filter(function (n) { return !isNaN(n); })
@@ -298,7 +302,6 @@ var plugin = globalThis.plugin = {
                 var epRaw = episodesObj[String(s)];
                 if (!epRaw) continue;
 
-                // В Kotlin: epArray.optString(i).toIntOrNull() — серии в виде массива строк
                 var epArr = Array.isArray(epRaw) ? epRaw : Object.keys(epRaw);
                 var sortedEps = epArr
                     .map(function (v) { return parseInt(v, 10); })
@@ -348,173 +351,48 @@ var plugin = globalThis.plugin = {
         try {
             this._log("1. resolveStream: " + url);
 
-            // --- Шаг 1: получить embed URL ---
-            var rawEmbedUrl;
-            if (url.indexOf("/info/") !== -1 || /^\d+$/.test(url)) {
-                var mediaId = this._extractMediaId(url);
-                var infoUrl = mediaId ? (this.meta.baseUrl + "/info/" + mediaId) : url;
-
-                var infoHeaders = {
-                    "User-Agent": this.USER_AGENT,
-                    "Origin": "https://liftw.ws",
-                    "Referer": "https://liftw.ws/",
-                    "Accept": "application/json"
-                };
-                var infoBody = bridge.request("GET", infoUrl, JSON.stringify(infoHeaders), "");
-                if (!infoBody || infoBody.replace(/^\s+/, "").charAt(0) !== '{') return null;
-
-                var json = JSON.parse(infoBody);
-                var extractedIframe = String(json.iframe_uri || json.iframe || json.embed || "");
-                if (extractedIframe.charAt(0) === "/") extractedIframe = "https://liftw.ws" + extractedIframe;
-
-                var sM = url.match(/[?&]season=(\d+)/);
-                var eM = url.match(/[?&]episode=(\d+)/);
-                if (sM && eM && extractedIframe) {
-                    var sep = extractedIframe.indexOf("?") !== -1 ? "&" : "?";
-                    extractedIframe = extractedIframe + sep + "season=" + sM[1] + "&episode=" + eM[1];
-                }
-                rawEmbedUrl = extractedIframe;
-            } else {
-                rawEmbedUrl = url;
-            }
-
-            if (!rawEmbedUrl) return null;
-
-            var cleanEmbedUrl = this._unescapeJs(rawEmbedUrl);
-            if (cleanEmbedUrl.indexOf("//") === 0) cleanEmbedUrl = "https:" + cleanEmbedUrl;
-            if (cleanEmbedUrl.charAt(0) === "/") cleanEmbedUrl = "https://liftw.ws" + cleanEmbedUrl;
-            this._log("2. embed URL: " + cleanEmbedUrl);
-
-            // --- Шаг 2: скачать embed-страницу ---
-            var embedHeaders = {
-                "User-Agent": this.USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Referer": "https://liftw.ws/"
-            };
-            var embedHtml = bridge.request("GET", cleanEmbedUrl, JSON.stringify(embedHeaders), "") || "";
-            if (!embedHtml) { this._log("empty embed html"); return null; }
+            var embedCandidates = this._resolveEmbedCandidates(url);
+            if (!embedCandidates || embedCandidates.length === 0) return null;
 
             var finalStreamUrl = null;
-            var urlRegex = /(https?:\/\/[^,"'|\[\]\s<>]+)/;
+            var cleanEmbedUrl = "";
+            var usedHtml = "";
 
-            // --- Шаг 3: конфиг плеера (hls|file|playlist|dash) : "https://...\.(m3u8|mp4|txt|json)..." ---
-            var configRegex = /(?:hls|file|playlist|dash)\s*:\s*["'](https?:\/\/[^"']+\.(?:m3u8|mp4|txt|json)[^"']*)["']/g;
-            var match;
-            while ((match = configRegex.exec(embedHtml)) !== null) {
-                var extractedData = this._unescapeJs(match[1]);
+            for (var c = 0; c < embedCandidates.length; c++) {
+                var candidateUrl = this._unescapeJs(embedCandidates[c]);
+                if (candidateUrl.indexOf("//") === 0) candidateUrl = "https:" + candidateUrl;
+                if (candidateUrl.charAt(0) === "/") candidateUrl = "https://liftw.ws" + candidateUrl;
 
-                if (extractedData.indexOf("#2") === 0) {
-                    try { extractedData = bridge.decodeBase64(extractedData.substring(2)); } catch (_) {}
-                } else if (extractedData.indexOf("//_//") === 0) {
-                    try { extractedData = bridge.decodeBase64(extractedData.replace(/\/\/_\/\//g, "")); } catch (_) {}
+                this._log("2. embed URL: " + candidateUrl);
+
+                var embedHeaders = {
+                    "User-Agent": this.USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Referer": "https://liftw.ws/"
+                };
+                var embedHtml = bridge.request("GET", candidateUrl, JSON.stringify(embedHeaders), "") || "";
+                if (!embedHtml) {
+                    this._log("empty embed html: " + candidateUrl);
+                    continue;
                 }
 
-                var firstUrlMatch = extractedData.match(urlRegex);
-                var firstUrl = firstUrlMatch ? firstUrlMatch[1] : null;
-                if (!firstUrl) continue;
+                cleanEmbedUrl = candidateUrl;
+                usedHtml = embedHtml;
 
-                if (firstUrl.indexOf(".m3u8") !== -1 || firstUrl.indexOf(".mp4") !== -1 ||
-                    firstUrl.indexOf("interkh") !== -1 || firstUrl.slice(-2) === "==") {
-                    finalStreamUrl = firstUrl;
-                    break;
-                } else {
-                    var plHeaders = { "Referer": cleanEmbedUrl, "User-Agent": this.USER_AGENT };
-                    var plTextRaw = bridge.request("GET", firstUrl, JSON.stringify(plHeaders), "") || "";
-                    if (plTextRaw.indexOf("#EXTM3U") === 0) {
-                        finalStreamUrl = firstUrl;
-                        break;
-                    } else {
-                        var plText = plTextRaw;
-                        if (plText.indexOf("#2") === 0) {
-                            try { plText = bridge.decodeBase64(plText.substring(2)); } catch (_) {}
-                        }
-                        var sub = plText.match(urlRegex);
-                        finalStreamUrl = sub ? sub[1] : firstUrl;
-                        break;
-                    }
-                }
-            }
-
-            // --- Шаг 4: strict m3u8 в raw HTML ---
-            if (!finalStreamUrl) {
-                var strict = embedHtml.match(/(https?:\/\/[^"'\s<>|\[\]{},]+\.m3u8[^"'\s<>|\[\]{},]*)/);
-                if (strict) {
-                    finalStreamUrl = strict[1];
-                    this._log("strict m3u8: " + finalStreamUrl);
-                }
-            }
-
-            // --- Шаг 5: балансер через iframe ---
-            if (!finalStreamUrl) {
-                var iframeMatch = embedHtml.match(/<iframe[^>]+src=["']([^"']+)["']/);
-                var iframeUrl = iframeMatch ? iframeMatch[1] : null;
-
-                if (iframeUrl) {
-                    if (iframeUrl.indexOf("//") === 0) iframeUrl = "https:" + iframeUrl;
-                    if (iframeUrl.charAt(0) === "/") iframeUrl = "https://liftw.ws" + iframeUrl;
-                    iframeUrl = this._unescapeJs(iframeUrl);
-
-                    var sM2 = cleanEmbedUrl.match(/[?&]season=(\d+)/);
-                    var eM2 = cleanEmbedUrl.match(/[?&]episode=(\d+)/);
-                    var sP = sM2 ? parseInt(sM2[1], 10) : null;
-                    var eP = eM2 ? parseInt(eM2[1], 10) : null;
-                    if (sP !== null && eP !== null && iframeUrl.indexOf("season=") === -1) {
-                        var sep2 = iframeUrl.indexOf("?") !== -1 ? "&" : "?";
-                        iframeUrl = iframeUrl + sep2 + "season=" + sP + "&episode=" + eP;
-                    }
-
-                    this._log("balancer iframe: " + iframeUrl);
-
-                    var balHeaders = { "User-Agent": this.USER_AGENT, "Referer": cleanEmbedUrl };
-                    var balancerHtml = bridge.request("GET", iframeUrl, JSON.stringify(balHeaders), "") || "";
-
-                    if (sP !== null && eP !== null) {
-                        var seasonsMatch = balancerHtml.match(/seasons\s*:\s*(\[\{[\s\S]*?\}\])\s*[,;]/);
-                        if (seasonsMatch) {
-                            try {
-                                var sArr = JSON.parse(seasonsMatch[1]);
-                                for (var sidx = 0; sidx < sArr.length; sidx++) {
-                                    var sObj = sArr[sidx];
-                                    if (Number(sObj.season || (sidx + 1)) !== sP) continue;
-                                    var epArr = sObj.episodes || [];
-                                    for (var eidx = 0; eidx < epArr.length; eidx++) {
-                                        var epObj = epArr[eidx];
-                                        if (Number(epObj.episode || (eidx + 1)) !== eP) continue;
-                                        var hls = String(epObj.hls || epObj.url || "")
-                                            .replace(/\\\//g, "/").replace(/\\u0026/g, "&").trim();
-                                        if (hls) { finalStreamUrl = hls; break; }
-                                    }
-                                    if (finalStreamUrl) break;
-                                }
-                            } catch (_) {}
-                        }
-                    }
-
-                    if (!finalStreamUrl) {
-                        var balStrict = balancerHtml.match(/(https?:\/\/[^"'\s<>|\[\]{},]+\.m3u8[^"'\s<>|\[\]{},]*)/);
-                        if (balStrict) finalStreamUrl = balStrict[1];
-                    }
-
-                    if (!finalStreamUrl) {
-                        var fileMatch = balancerHtml.match(/(?:file|url)\s*["':]+\s*["']([^"']+)["']/);
-                        if (fileMatch) {
-                            var fmUrl = fileMatch[1].match(urlRegex);
-                            if (fmUrl) finalStreamUrl = fmUrl[1];
-                        }
-                    }
-                }
+                finalStreamUrl = this._extractStreamFromHtml(embedHtml, candidateUrl);
+                if (finalStreamUrl) break;
             }
 
             if (!finalStreamUrl) {
-                this._log("Поток не найден для " + cleanEmbedUrl);
+                this._log("Поток не найден");
                 return null;
             }
 
             if (finalStreamUrl.indexOf("//") === 0) finalStreamUrl = "https:" + finalStreamUrl;
             finalStreamUrl = this._unescapeJs(finalStreamUrl);
 
-            // --- Шаг 6: токен авторизации var lok = 1, xxx = "token" ---
-            var tokenMatch = embedHtml.match(/var\s+lok\s*=\s*1\s*,\s*[a-zA-Z0-9_]+\s*=\s*["']([^"']+)["']/);
+            // Токен авторизации: var lok = 1, xxx = "token"
+            var tokenMatch = usedHtml.match(/var\s+lok\s*=\s*1\s*,\s*[a-zA-Z0-9_]+\s*=\s*["']([^"']+)["']/);
             if (tokenMatch && tokenMatch[1] && finalStreamUrl.indexOf(tokenMatch[1]) === -1) {
                 var sep3 = finalStreamUrl.indexOf("?") !== -1 ? "&" : "?";
                 finalStreamUrl = finalStreamUrl + sep3 + tokenMatch[1];
@@ -531,12 +409,170 @@ var plugin = globalThis.plugin = {
             return {
                 streamUrl: finalStreamUrl,
                 mimeType: finalStreamUrl.indexOf(".mp4") !== -1 ? "video/mp4" : "application/x-mpegURL",
+                width: 1920,
+                height: 1080,
                 headers: playerHeaders
             };
         } catch (e) {
             this._log("resolveStream error: " + e);
             return null;
         }
+    },
+
+    // ============================== УТИЛИТЫ ПОТОКА ==============================
+
+    _resolveEmbedCandidates: function (url) {
+        var mediaId = this._extractMediaId(url);
+        if (!mediaId) return [url];
+
+        var headers = {
+            "User-Agent": this.USER_AGENT,
+            "Origin": "https://liftw.ws",
+            "Referer": "https://liftw.ws/",
+            "Accept": "application/json"
+        };
+        var infoBody = bridge.request("GET", this.meta.baseUrl + "/info/" + mediaId, JSON.stringify(headers), "");
+
+        var extractedIframe = "";
+        if (infoBody && infoBody.replace(/^\s+/, "").charAt(0) === '{') {
+            try {
+                var json = JSON.parse(infoBody);
+                extractedIframe = String(json.iframe_uri || json.iframe || json.embed || "");
+                if (extractedIframe.charAt(0) === "/") extractedIframe = "https://liftw.ws" + extractedIframe;
+                extractedIframe = this._unescapeJs(extractedIframe);
+            } catch (_) {}
+        }
+
+        // Перенос season/episode, если были в исходном url
+        var sM = url.match(/[?&]season=(\d+)/);
+        var eM = url.match(/[?&]episode=(\d+)/);
+        if (sM && eM && extractedIframe && extractedIframe.indexOf("season=") === -1) {
+            var sep = extractedIframe.indexOf("?") !== -1 ? "&" : "?";
+            extractedIframe = extractedIframe + sep + "season=" + sM[1] + "&episode=" + eM[1];
+        }
+
+        var candidates = [];
+        if (extractedIframe) candidates.push(extractedIframe);
+        if (url && url.indexOf("/info/") === -1 && !/^\d+$/.test(url)) candidates.push(url);
+
+        var unique = [];
+        for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i] && unique.indexOf(candidates[i]) === -1) unique.push(candidates[i]);
+        }
+        return unique;
+    },
+
+    _extractStreamFromHtml: function (embedHtml, cleanEmbedUrl) {
+        var html = String(embedHtml || "");
+        var urlRegex = /(https?:\/\/[^,"'|\[\]\s<>]+)/;
+        var match;
+
+        // === 1. Узкая регулярка как в рабочем Kotlin:
+        //     hls|file|playlist|dash : "https://...\.(m3u8|mp4|txt|json)..."
+        //     Явно НЕ матчит preview.src (спрайты .webp) ===
+        var configRegex = /(?:hls|file|playlist|dash)\s*:\s*["'](https?:\/\/[^"']+\.(?:m3u8|mp4|txt|json)[^"']*)["']/g;
+        while ((match = configRegex.exec(html)) !== null) {
+            var extractedData = this._unescapeJs(match[1]);
+
+            if (extractedData.indexOf("#2") === 0) {
+                try { extractedData = bridge.decodeBase64(extractedData.substring(2)); } catch (_) {}
+            } else if (extractedData.indexOf("//_//") === 0) {
+                try { extractedData = bridge.decodeBase64(extractedData.replace(/\/\/_\/\//g, "")); } catch (_) {}
+            }
+
+            var firstUrlMatch = extractedData.match(urlRegex);
+            var firstUrl = firstUrlMatch ? firstUrlMatch[1] : null;
+            if (!firstUrl) continue;
+
+            if (firstUrl.indexOf(".m3u8") !== -1 || firstUrl.indexOf(".mp4") !== -1 ||
+                firstUrl.indexOf("interkh") !== -1 || firstUrl.slice(-2) === "==") {
+                this._log("config match: " + firstUrl);
+                return firstUrl;
+            }
+
+            // URL без расширения — пробуем как .txt/.json плейлист
+            var plHeaders = { "Referer": cleanEmbedUrl, "User-Agent": this.USER_AGENT };
+            var plTextRaw = bridge.request("GET", firstUrl, JSON.stringify(plHeaders), "") || "";
+            if (plTextRaw.indexOf("#EXTM3U") === 0) return firstUrl;
+
+            var plText = plTextRaw;
+            if (plText.indexOf("#2") === 0) {
+                try { plText = bridge.decodeBase64(plText.substring(2)); } catch (_) {}
+            }
+            var sub = plText.match(urlRegex);
+            return sub ? sub[1] : firstUrl;
+        }
+
+        // === 2. Строгий поиск m3u8 в raw HTML (как в Kotlin) ===
+        var strict = html.match(/(https?:\/\/[^"'\s<>|\[\]{},]+\.m3u8[^"'\s<>|\[\]{},]*)/);
+        if (strict) {
+            this._log("strict m3u8: " + strict[1]);
+            return strict[1];
+        }
+
+        // === 3. Балансер через iframe ===
+        return this._resolveViaBalancer(html, cleanEmbedUrl);
+    },
+
+    _resolveViaBalancer: function (embedHtml, refererUrl) {
+        var iframeMatch = embedHtml.match(/<iframe[^>]+src=["']([^"']+)["']/);
+        if (!iframeMatch) return null;
+
+        var iframeUrl = iframeMatch[1];
+        if (iframeUrl.indexOf("//") === 0) iframeUrl = "https:" + iframeUrl;
+        if (iframeUrl.charAt(0) === "/") iframeUrl = "https://liftw.ws" + iframeUrl;
+        iframeUrl = this._unescapeJs(iframeUrl);
+
+        var sM = refererUrl.match(/[?&]season=(\d+)/);
+        var eM = refererUrl.match(/[?&]episode=(\d+)/);
+        var sParam = sM ? parseInt(sM[1], 10) : null;
+        var eParam = eM ? parseInt(eM[1], 10) : null;
+
+        if (sParam !== null && eParam !== null && iframeUrl.indexOf("season=") === -1) {
+            var sep = iframeUrl.indexOf("?") !== -1 ? "&" : "?";
+            iframeUrl = iframeUrl + sep + "season=" + sParam + "&episode=" + eParam;
+        }
+
+        this._log("balancer iframe: " + iframeUrl);
+
+        var balHeaders = { "User-Agent": this.USER_AGENT, "Referer": refererUrl };
+        var balancerHtml = bridge.request("GET", iframeUrl, JSON.stringify(balHeaders), "") || "";
+        if (!balancerHtml) return null;
+
+        // Дерево seasons: [{...}] для сериалов
+        if (sParam !== null && eParam !== null) {
+            var seasonsMatch = balancerHtml.match(/seasons\s*:\s*(\[\{[\s\S]*?\}\])\s*[,;]/);
+            if (seasonsMatch) {
+                try {
+                    var sArr = JSON.parse(seasonsMatch[1]);
+                    for (var sidx = 0; sidx < sArr.length; sidx++) {
+                        var sObj = sArr[sidx];
+                        if (Number(sObj.season || (sidx + 1)) !== sParam) continue;
+                        var eps = sObj.episodes || [];
+                        for (var eidx = 0; eidx < eps.length; eidx++) {
+                            var epObj = eps[eidx];
+                            if (Number(epObj.episode || (eidx + 1)) !== eParam) continue;
+                            var hls = String(epObj.hls || epObj.url || "")
+                                .replace(/\\\//g, "/").replace(/\\u0026/g, "&").trim();
+                            if (hls) return hls;
+                        }
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // Строгий m3u8 в HTML балансера
+        var balStrict = balancerHtml.match(/(https?:\/\/[^"'\s<>|\[\]{},]+\.m3u8[^"'\s<>|\[\]{},]*)/);
+        if (balStrict) return balStrict[1];
+
+        // file/url : "..." в скриптах балансера
+        var fileMatch = balancerHtml.match(/(?:file|url)\s*["':]+\s*["']([^"']+)["']/);
+        if (fileMatch) {
+            var fm = fileMatch[1].match(/(https?:\/\/[^,"'|\[\]\s<>]+)/);
+            if (fm) return fm[1];
+        }
+
+        return null;
     },
 
     // ============================== УТИЛИТЫ ==============================
