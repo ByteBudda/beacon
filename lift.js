@@ -1,13 +1,9 @@
 /**
- * JS-порт рабочего Kotlin-плагина LiftwPlugin.
- * Логика извлечения потока 1:1 соответствует проверенному Kotlin-коду:
- *   - узкий configRegex (hls|file|playlist|dash) + обязательное расширение .m3u8/.mp4/.txt/.json
- *   - строгий поиск m3u8 в HTML
- *   - iframe-балансер как fallback
- *   - токен авторизации var lok = 1, xxx = "..."
- *   - заголовки плеера: только User-Agent + Referer
+ * JS-плагин Liftw.
+ * НЕ использует globalThis — только var plugin = {...}, чтобы работать в любом QuickJS.
+ * Логика потока 1:1 как в рабочем Kotlin-плагине (узкая regex, strict m3u8, балансер).
  */
-var plugin = globalThis.plugin = {
+var plugin = {
     meta: {
         name: "Liftw",
         baseUrl: "https://api.liftw.ws",
@@ -107,9 +103,7 @@ var plugin = globalThis.plugin = {
                 else if (!isNaN(imdbRating) && imdbRating > 0) badges.push("IMDb " + imdbRating.toFixed(1));
                 if (yearStr) badges.push(yearStr);
 
-                var rawIframeUri = this._unescapeJs(
-                    item.iframe_uri || item.iframe || item.embed || ""
-                );
+                var rawIframeUri = this._unescapeJs(item.iframe_uri || item.iframe || item.embed || "");
                 if (rawIframeUri.indexOf("//") === 0) rawIframeUri = "https:" + rawIframeUri;
                 if (rawIframeUri.charAt(0) === "/") rawIframeUri = "https://liftw.ws" + rawIframeUri;
 
@@ -180,9 +174,7 @@ var plugin = globalThis.plugin = {
                 else if (!isNaN(imdbRating) && imdbRating > 0) badges.push("IMDb " + imdbRating.toFixed(1));
                 if (yearStr) badges.push(yearStr);
 
-                var rawIframeUri = this._unescapeJs(
-                    item.iframe_uri || item.iframe || item.embed || ""
-                );
+                var rawIframeUri = this._unescapeJs(item.iframe_uri || item.iframe || item.embed || "");
                 if (rawIframeUri.indexOf("//") === 0) rawIframeUri = "https:" + rawIframeUri;
                 if (rawIframeUri.charAt(0) === "/") rawIframeUri = "https://liftw.ws" + rawIframeUri;
 
@@ -355,7 +347,6 @@ var plugin = globalThis.plugin = {
             if (!embedCandidates || embedCandidates.length === 0) return null;
 
             var finalStreamUrl = null;
-            var cleanEmbedUrl = "";
             var usedHtml = "";
 
             for (var c = 0; c < embedCandidates.length; c++) {
@@ -371,14 +362,9 @@ var plugin = globalThis.plugin = {
                     "Referer": "https://liftw.ws/"
                 };
                 var embedHtml = bridge.request("GET", candidateUrl, JSON.stringify(embedHeaders), "") || "";
-                if (!embedHtml) {
-                    this._log("empty embed html: " + candidateUrl);
-                    continue;
-                }
+                if (!embedHtml) continue;
 
-                cleanEmbedUrl = candidateUrl;
                 usedHtml = embedHtml;
-
                 finalStreamUrl = this._extractStreamFromHtml(embedHtml, candidateUrl);
                 if (finalStreamUrl) break;
             }
@@ -391,7 +377,6 @@ var plugin = globalThis.plugin = {
             if (finalStreamUrl.indexOf("//") === 0) finalStreamUrl = "https:" + finalStreamUrl;
             finalStreamUrl = this._unescapeJs(finalStreamUrl);
 
-            // Токен авторизации: var lok = 1, xxx = "token"
             var tokenMatch = usedHtml.match(/var\s+lok\s*=\s*1\s*,\s*[a-zA-Z0-9_]+\s*=\s*["']([^"']+)["']/);
             if (tokenMatch && tokenMatch[1] && finalStreamUrl.indexOf(tokenMatch[1]) === -1) {
                 var sep3 = finalStreamUrl.indexOf("?") !== -1 ? "&" : "?";
@@ -401,17 +386,15 @@ var plugin = globalThis.plugin = {
 
             this._log("5. ФИНАЛЬНЫЙ ПОТОК: " + finalStreamUrl);
 
-            var playerHeaders = {
-                "User-Agent": this.USER_AGENT,
-                "Referer": "https://liftw.ws/"
-            };
-
             return {
                 streamUrl: finalStreamUrl,
                 mimeType: finalStreamUrl.indexOf(".mp4") !== -1 ? "video/mp4" : "application/x-mpegURL",
                 width: 1920,
                 height: 1080,
-                headers: playerHeaders
+                headers: {
+                    "User-Agent": this.USER_AGENT,
+                    "Referer": "https://liftw.ws/"
+                }
             };
         } catch (e) {
             this._log("resolveStream error: " + e);
@@ -443,7 +426,6 @@ var plugin = globalThis.plugin = {
             } catch (_) {}
         }
 
-        // Перенос season/episode, если были в исходном url
         var sM = url.match(/[?&]season=(\d+)/);
         var eM = url.match(/[?&]episode=(\d+)/);
         if (sM && eM && extractedIframe && extractedIframe.indexOf("season=") === -1) {
@@ -467,9 +449,7 @@ var plugin = globalThis.plugin = {
         var urlRegex = /(https?:\/\/[^,"'|\[\]\s<>]+)/;
         var match;
 
-        // === 1. Узкая регулярка как в рабочем Kotlin:
-        //     hls|file|playlist|dash : "https://...\.(m3u8|mp4|txt|json)..."
-        //     Явно НЕ матчит preview.src (спрайты .webp) ===
+        // Узкая regex как в рабочем Kotlin — НЕ матчит preview.src (.webp)
         var configRegex = /(?:hls|file|playlist|dash)\s*:\s*["'](https?:\/\/[^"']+\.(?:m3u8|mp4|txt|json)[^"']*)["']/g;
         while ((match = configRegex.exec(html)) !== null) {
             var extractedData = this._unescapeJs(match[1]);
@@ -490,7 +470,6 @@ var plugin = globalThis.plugin = {
                 return firstUrl;
             }
 
-            // URL без расширения — пробуем как .txt/.json плейлист
             var plHeaders = { "Referer": cleanEmbedUrl, "User-Agent": this.USER_AGENT };
             var plTextRaw = bridge.request("GET", firstUrl, JSON.stringify(plHeaders), "") || "";
             if (plTextRaw.indexOf("#EXTM3U") === 0) return firstUrl;
@@ -503,14 +482,12 @@ var plugin = globalThis.plugin = {
             return sub ? sub[1] : firstUrl;
         }
 
-        // === 2. Строгий поиск m3u8 в raw HTML (как в Kotlin) ===
         var strict = html.match(/(https?:\/\/[^"'\s<>|\[\]{},]+\.m3u8[^"'\s<>|\[\]{},]*)/);
         if (strict) {
             this._log("strict m3u8: " + strict[1]);
             return strict[1];
         }
 
-        // === 3. Балансер через iframe ===
         return this._resolveViaBalancer(html, cleanEmbedUrl);
     },
 
@@ -539,7 +516,6 @@ var plugin = globalThis.plugin = {
         var balancerHtml = bridge.request("GET", iframeUrl, JSON.stringify(balHeaders), "") || "";
         if (!balancerHtml) return null;
 
-        // Дерево seasons: [{...}] для сериалов
         if (sParam !== null && eParam !== null) {
             var seasonsMatch = balancerHtml.match(/seasons\s*:\s*(\[\{[\s\S]*?\}\])\s*[,;]/);
             if (seasonsMatch) {
@@ -561,11 +537,9 @@ var plugin = globalThis.plugin = {
             }
         }
 
-        // Строгий m3u8 в HTML балансера
         var balStrict = balancerHtml.match(/(https?:\/\/[^"'\s<>|\[\]{},]+\.m3u8[^"'\s<>|\[\]{},]*)/);
         if (balStrict) return balStrict[1];
 
-        // file/url : "..." в скриптах балансера
         var fileMatch = balancerHtml.match(/(?:file|url)\s*["':]+\s*["']([^"']+)["']/);
         if (fileMatch) {
             var fm = fileMatch[1].match(/(https?:\/\/[^,"'|\[\]\s<>]+)/);
