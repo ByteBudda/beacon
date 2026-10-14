@@ -1,10 +1,11 @@
 /**
  * Полноценный боевой JS-плагин Liftw для системы QuickJS.
- * Исправлено извлечение iframe_uri из /info/{id} и декодирование скрытых Base64 (#2) потоков.
+ * Исправлено: _decodeIfBase64 (#2 / //_//), _decodePlayerValue для [1080p]//_//b64,
+ * configRegex с JSON-ключами, приоритет качества, диагностический лог.
  */
 var plugin = globalThis.plugin = {
     meta: {
-        name: "Liftw",
+        name: "Lift",
         baseUrl: "https://api.liftw.ws",
         aliases: ["Lift", "Liftw", "Лифт", "Фильмы и сериалы", "Кино"],
         domains: ["liftw.ws", "api.liftw.ws", "embed.liftw.ws", "interkh.com"],
@@ -13,6 +14,7 @@ var plugin = globalThis.plugin = {
     },
 
     USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    DEBUG: true,
 
     SERIES_CATEGORIES: {
         "series": true,
@@ -21,15 +23,20 @@ var plugin = globalThis.plugin = {
         "tvshows": true
     },
 
-    checkAuth: function() {
-        return true;
+    _log: function (msg) {
+        if (!this.DEBUG) return;
+        try {
+            if (typeof bridge !== "undefined" && bridge.log) {
+                bridge.log("[Lift] " + msg);
+            }
+        } catch (_) {}
     },
 
-    login: function(username, password) {
-        return { success: true };
-    },
+    checkAuth: function () { return true; },
 
-    getCatalogCategories: function() {
+    login: function (username, password) { return { success: true }; },
+
+    getCatalogCategories: function () {
         return [
             { id: "films", title: "Фильмы", description: "Художественные фильмы" },
             { id: "series", title: "Сериалы", description: "Зарубежные и российские сериалы" },
@@ -42,7 +49,7 @@ var plugin = globalThis.plugin = {
         ];
     },
 
-    getCatalogItems: function(category, page) {
+    getCatalogItems: function (category, page) {
         try {
             var cat = category || "films";
             var p = page || 1;
@@ -61,7 +68,7 @@ var plugin = globalThis.plugin = {
             var body = bridge.request("GET", url, JSON.stringify(headers), "");
             var trimmed = (body || "").trim();
 
-            if (cat === "all" && (trimmed.length === 0 || trimmed.charAt(0) !== '[' || trimmed === "[]")) {
+            if (cat === "all" && (!trimmed || trimmed.charAt(0) !== '[' || trimmed === "[]")) {
                 var fallbackUrl = this.meta.baseUrl + "/list/categories?category=films&page=" + p + "&limit=20&sort=popular&last=true";
                 body = bridge.request("GET", fallbackUrl, JSON.stringify(headers), "");
                 trimmed = (body || "").trim();
@@ -71,7 +78,6 @@ var plugin = globalThis.plugin = {
 
             var arr = JSON.parse(trimmed);
             var results = [];
-
             for (var i = 0; i < arr.length; i++) {
                 if (arr[i]) {
                     results.push(this._parseApiItem(arr[i], cat === "all" ? null : cat));
@@ -79,11 +85,12 @@ var plugin = globalThis.plugin = {
             }
             return results;
         } catch (e) {
+            this._log("getCatalogItems error: " + e);
             return [];
         }
     },
 
-    search: function(query, limit) {
+    search: function (query, limit) {
         try {
             var cleanQ = (query || "").trim();
             if (!cleanQ) return [];
@@ -131,11 +138,12 @@ var plugin = globalThis.plugin = {
 
             return results;
         } catch (e) {
+            this._log("search error: " + e);
             return [];
         }
     },
 
-    getVideoInfo: function(url) {
+    getVideoInfo: function (url) {
         try {
             var mediaId = this._extractMediaId(url);
             if (!mediaId) return null;
@@ -153,11 +161,12 @@ var plugin = globalThis.plugin = {
             var root = JSON.parse(body.trim());
             return this._parseApiItem(root, null);
         } catch (e) {
+            this._log("getVideoInfo error: " + e);
             return null;
         }
     },
 
-    getEpisodes: function(seriesUrl) {
+    getEpisodes: function (seriesUrl) {
         try {
             var mediaId = this._extractMediaId(seriesUrl);
             if (!mediaId) return null;
@@ -193,9 +202,9 @@ var plugin = globalThis.plugin = {
             var fullDescription = this._buildFullDescription(genre, country, age, episodeTime, mpaa, description);
 
             var seasonKeys = Object.keys(episodesObj)
-                .map(function(k) { return parseInt(k, 10); })
-                .filter(function(n) { return !isNaN(n); });
-            seasonKeys.sort(function(a, b) { return a - b; });
+                .map(function (k) { return parseInt(k, 10); })
+                .filter(function (n) { return !isNaN(n); });
+            seasonKeys.sort(function (a, b) { return a - b; });
 
             var episodesList = [];
 
@@ -207,7 +216,7 @@ var plugin = globalThis.plugin = {
                 if (Array.isArray(epRaw)) {
                     for (var ei = 0; ei < epRaw.length; ei++) {
                         var itemEp = epRaw[ei];
-                        var n = typeof itemEp === "object" && itemEp !== null
+                        var n = (typeof itemEp === "object" && itemEp !== null)
                             ? parseInt(itemEp.episode || itemEp.num || (ei + 1), 10)
                             : parseInt(itemEp, 10);
                         if (!isNaN(n)) numArr.push(n);
@@ -220,7 +229,7 @@ var plugin = globalThis.plugin = {
                     }
                 }
 
-                numArr.sort(function(a, b) { return a - b; });
+                numArr.sort(function (a, b) { return a - b; });
 
                 for (var k = 0; k < numArr.length; k++) {
                     var e = numArr[k];
@@ -252,13 +261,17 @@ var plugin = globalThis.plugin = {
 
             return episodesList.length > 0 ? episodesList : null;
         } catch (e) {
+            this._log("getEpisodes error: " + e);
             return null;
         }
     },
 
-    resolveStream: function(url, audioOnly) {
+    resolveStream: function (url, audioOnly) {
         try {
+            this._log("resolveStream IN: " + url);
+
             var embedCandidates = this._resolveEmbedCandidates(url);
+            this._log("embed candidates: " + JSON.stringify(embedCandidates));
             if (!embedCandidates || embedCandidates.length === 0) return null;
 
             var referers = [
@@ -283,13 +296,17 @@ var plugin = globalThis.plugin = {
                         "Referer": referers[r]
                     };
                     var embedHtml = bridge.request("GET", cleanEmbedUrl, JSON.stringify(embedHeaders), "");
-                    if (!embedHtml || embedHtml.length < 20) continue;
+                    if (!embedHtml || embedHtml.length < 20) {
+                        this._log("embed " + cleanEmbedUrl + " ref=" + referers[r] + " -> len=" + (embedHtml ? embedHtml.length : 0));
+                        continue;
+                    }
 
                     var candidate = this._extractStreamFromHtml(embedHtml, cleanEmbedUrl);
                     if (candidate) {
                         foundStream = candidate;
                         usedHtml = embedHtml;
                         usedEmbedUrl = cleanEmbedUrl;
+                        this._log("FOUND stream: " + candidate);
                         break;
                     }
                     if (!usedHtml) usedHtml = embedHtml;
@@ -297,13 +314,15 @@ var plugin = globalThis.plugin = {
                 if (foundStream) break;
             }
 
-            if (!foundStream) return null;
+            if (!foundStream) {
+                this._log("no stream found, last html head: " + (usedHtml || "").substring(0, 300));
+                return null;
+            }
 
             var stream = foundStream;
             if (stream.indexOf("//") === 0) stream = "https:" + stream;
             stream = stream.replace(/\\\//g, "/").replace(/\\u0026/g, "&").trim();
 
-            // Токен авторизации lok
             var tokenMatch = usedHtml.match(/var\s+lok\s*=\s*1\s*,\s*[a-zA-Z0-9_]+\s*=\s*["']([^"']+)["']/);
             if (tokenMatch && tokenMatch[1] && stream.indexOf(tokenMatch[1]) === -1) {
                 var sep = stream.indexOf("?") !== -1 ? "&" : "?";
@@ -328,13 +347,14 @@ var plugin = globalThis.plugin = {
                 headers: playerHeaders
             };
         } catch (e) {
+            this._log("resolveStream error: " + e);
             return null;
         }
     },
 
     // ====================== ВНУТРЕННИЕ ПАРСЕРЫ И УТИЛИТЫ ======================
 
-    _extractIframeFromObj: function(obj) {
+    _extractIframeFromObj: function (obj) {
         if (!obj || typeof obj !== "object") return "";
         var keys = ["iframe_uri", "iframe_url", "iframe", "embed_url", "embed", "player", "player_url"];
         for (var i = 0; i < keys.length; i++) {
@@ -351,7 +371,6 @@ var plugin = globalThis.plugin = {
                 }
             }
         }
-        // На случай, если ссылка лежит в любом другом строковом поле JSON
         var rawJson = JSON.stringify(obj);
         var m = rawJson.match(/["']((?:https?:)?\/\/[^"']*(?:embed|interkh|play|iframe)[^"']*)["']/i);
         if (m && m[1]) {
@@ -360,7 +379,7 @@ var plugin = globalThis.plugin = {
         return "";
     },
 
-    _resolveEmbedCandidates: function(url) {
+    _resolveEmbedCandidates: function (url) {
         var sMatch = url.match(/[?&]season=(\d+)/);
         var eMatch = url.match(/[?&]episode=(\d+)/);
         var sParam = sMatch ? sMatch[1] : null;
@@ -377,12 +396,10 @@ var plugin = globalThis.plugin = {
             return target;
         }
 
-        // Если переданный url уже является прямым embed-адресом (а не /info/83478)
         if (url.indexOf("/info/") === -1 && !/^\d+$/.test(url)) {
             candidates.push(appendParams(url));
         }
 
-        // Всегда дополнительно проверяем /info/{id}, чтобы достать свежий iframe_uri с токеном
         var mediaId = this._extractMediaId(url);
         if (mediaId) {
             var headers = {
@@ -399,41 +416,88 @@ var plugin = globalThis.plugin = {
                     if (extracted) {
                         var withParams = appendParams(extracted);
                         if (candidates.indexOf(withParams) === -1) {
-                            // Ставим свежий iframe из /info/{id} на первое место!
                             candidates.unshift(withParams);
                         }
                     }
                 } catch (_) {}
             }
-
-            // Резервные шаблоны на случай, если API не вернуло поле iframe_uri
             candidates.push(appendParams("https://embed.liftw.ws/embed/" + mediaId));
             candidates.push(appendParams("https://liftw.ws/embed/" + mediaId));
         }
 
-        return candidates;
+        // убираем дубли и пустышки
+        var unique = [];
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (c && unique.indexOf(c) === -1) unique.push(c);
+        }
+        return unique;
     },
 
-    _extractStreamFromHtml: function(embedHtml, cleanEmbedUrl) {
-        // 1. Ищем любые параметры плеера: file, hls, playlist, dash, src (даже если там Base64 #2... без http!)
-        var configRegex = /(?:hls|file|playlist|dash|stream)\s*[:=]\s*["']([^"']{8,})["']/gi;
+    /**
+     * Разбор значения PlayerJS-поля (file / hls / sources):
+     *   "[1080p]//_//b64,[720p]//_//b64" → лучший URL
+     *   "#2b64"                            → URL
+     *   "https://...m3u8"                  → URL
+     */
+    _decodePlayerValue: function (raw) {
+        if (!raw) return null;
+        var out = String(raw).trim();
+        if (!out) return null;
+
+        // 1. Сначала пробуем как единое значение (в т.ч. #2 / //_// префикс)
+        var direct = this._decodeIfBase64(out);
+        var directUrl = this._pickBestStreamUrl(direct);
+        if (directUrl && (directUrl.indexOf(".m3u8") !== -1 || directUrl.indexOf(".mp4") !== -1)) {
+            return directUrl;
+        }
+
+        // 2. Разбиваем на список качества по запятой
+        var parts = out.split(",");
+        if (parts.length > 1) {
+            var urls = [];
+            for (var i = 0; i < parts.length; i++) {
+                var p = parts[i].trim();
+                // снимаем "[1080p]" и подобные префиксы
+                p = p.replace(/^\[\s*[^\]]+\s*\]\s*/, "");
+                // иногда //_// склеен с префиксом качества без пробела
+                p = this._decodeIfBase64(p);
+                var u = this._pickBestStreamUrl(p);
+                if (u) urls.push(u);
+            }
+            if (urls.length > 0) {
+                for (var k = 0; k < urls.length; k++) if (urls[k].indexOf("1080") !== -1) return urls[k];
+                for (var k2 = 0; k2 < urls.length; k2++) if (urls[k2].indexOf("720") !== -1) return urls[k2];
+                return urls[urls.length - 1];
+            }
+        }
+
+        return directUrl;
+    },
+
+    _extractStreamFromHtml: function (embedHtml, cleanEmbedUrl) {
+        var html = String(embedHtml || "");
         var match;
 
-        while ((match = configRegex.exec(embedHtml)) !== null) {
+        // 1. Параметры плеера: file/hls/playlist/dash/stream/src/source/url (в т.ч. в JSON-кавычках)
+        var configRegex = /["']?(?:hls|file|playlist|dash|stream|src|source|url)["']?\s*[:=]\s*["']([^"']{8,})["']/gi;
+        while ((match = configRegex.exec(html)) !== null) {
             var rawVal = match[1].trim();
-            if (rawVal.indexOf(".js") !== -1 || rawVal.indexOf(".css") !== -1 || rawVal.indexOf(".svg") !== -1 || rawVal.indexOf(".png") !== -1) {
+            if (rawVal.indexOf(".js") !== -1 || rawVal.indexOf(".css") !== -1 ||
+                rawVal.indexOf(".svg") !== -1 || rawVal.indexOf(".png") !== -1 ||
+                rawVal.indexOf(".jpg") !== -1) {
                 continue;
             }
 
-            var decoded = this._decodeIfBase64(rawVal);
-            var bestUrl = this._pickBestStreamUrl(decoded);
+            var bestUrl = this._decodePlayerValue(rawVal);
             if (!bestUrl) continue;
 
-            if (bestUrl.indexOf(".m3u8") !== -1 || bestUrl.indexOf(".mp4") !== -1 || bestUrl.indexOf("interkh") !== -1) {
+            if (bestUrl.indexOf(".m3u8") !== -1 || bestUrl.indexOf(".mp4") !== -1 ||
+                bestUrl.indexOf("interkh") !== -1) {
                 return bestUrl;
             }
 
-            // Если это ссылка на текстовый/JSON плейлист (.txt / .json)
+            // Возможно это .txt/.json плейлист
             if (bestUrl.indexOf("http") === 0) {
                 var plHeaders = { "User-Agent": this.USER_AGENT, "Referer": cleanEmbedUrl };
                 var plTextRaw = bridge.request("GET", bestUrl, JSON.stringify(plHeaders), "") || "";
@@ -445,9 +509,9 @@ var plugin = globalThis.plugin = {
             }
         }
 
-        // 2. Ищем зашифрованные строки PlayerJS вида "#2..." или "//_//..." в любом месте скрипта
-        var b64Regex = /["']((?:#2|\/\/_\/\/)[A-Za-z0-9+/=_/-]{20,})["']/g;
-        while ((match = b64Regex.exec(embedHtml)) !== null) {
+        // 2. Зашифрованные строки PlayerJS где угодно
+        var b64Regex = /["']((?:#2|\/\/_\/\/)[A-Za-z0-9+/=_\/-]{20,})["']/g;
+        while ((match = b64Regex.exec(html)) !== null) {
             var dec = this._decodeIfBase64(match[1]);
             var bUrl = this._pickBestStreamUrl(dec);
             if (bUrl && (bUrl.indexOf(".m3u8") !== -1 || bUrl.indexOf(".mp4") !== -1)) {
@@ -455,48 +519,43 @@ var plugin = globalThis.plugin = {
             }
         }
 
-        // 3. Прямой поиск m3u8 / mp4 в коде страницы
-        var directBest = this._pickBestStreamUrl(embedHtml);
+        // 3. Прямой поиск m3u8 / mp4 в HTML
+        var directBest = this._pickBestStreamUrl(html);
         if (directBest && (directBest.indexOf(".m3u8") !== -1 || directBest.indexOf(".mp4") !== -1)) {
             return directBest;
         }
 
-        // 4. Переход во вложенный iframe балансера
-        return this._resolveViaBalancer(embedHtml, cleanEmbedUrl);
+        // 4. Вложенный iframe-балансер
+        return this._resolveViaBalancer(html, cleanEmbedUrl);
     },
 
-    /**
-     * Извлекает лучшую ссылку на поток из строки PlayerJS (например "[1080p]https://...m3u8,[720p]https://...m3u8")
-     */
-    _pickBestStreamUrl: function(text) {
+    _pickBestStreamUrl: function (text) {
         if (!text) return null;
         var clean = String(text).replace(/\\\//g, "/").replace(/\\u0026/g, "&");
 
-        // Ищем все URL с .m3u8 или .mp4
-        var m3u8Regex = /(https?:\/\/[^,"'\s<>|\[\]{}]+\.(?:m3u8|mp4)[^,"'\s<>|\[\]{}]*)/gi;
-        var allMatches = [];
+        // Приоритет 1: m3u8
+        var m3u8All = [];
+        var m3u8Re = /(https?:\/\/[^,"'\s<>|\[\]{}]+\.m3u8[^,"'\s<>|\[\]{}]*)/gi;
         var m;
-        while ((m = m3u8Regex.exec(clean)) !== null) {
-            allMatches.push(m[1]);
+        while ((m = m3u8Re.exec(clean)) !== null) m3u8All.push(m[1]);
+        if (m3u8All.length > 0) {
+            for (var i = 0; i < m3u8All.length; i++) if (m3u8All[i].indexOf("1080") !== -1) return m3u8All[i];
+            for (var j = 0; j < m3u8All.length; j++) if (m3u8All[j].indexOf("720") !== -1) return m3u8All[j];
+            return m3u8All[m3u8All.length - 1];
         }
 
-        if (allMatches.length > 0) {
-            // Если несколько потоков (360p, 720p, 1080p), обычно последний или с 1080/720 — самый качественный
-            for (var i = 0; i < allMatches.length; i++) {
-                if (allMatches[i].indexOf("1080") !== -1) return allMatches[i];
-            }
-            for (var j = 0; j < allMatches.length; j++) {
-                if (allMatches[j].indexOf("720") !== -1) return allMatches[j];
-            }
-            return allMatches[allMatches.length - 1];
-        }
+        // Приоритет 2: mp4
+        var mp4Re = /(https?:\/\/[^,"'\s<>|\[\]{}]+\.mp4[^,"'\s<>|\[\]{}]*)/gi;
+        var mp4All = [];
+        while ((m = mp4Re.exec(clean)) !== null) mp4All.push(m[1]);
+        if (mp4All.length > 0) return mp4All[mp4All.length - 1];
 
-        // Иначе возвращаем первый валидный http-адрес
+        // Приоритет 3: любой http-URL
         var genericMatch = clean.match(/(https?:\/\/[^,"'|\[\]\s<>]+)/);
         return genericMatch ? genericMatch[1] : null;
     },
 
-    _resolveViaBalancer: function(embedHtml, refererUrl) {
+    _resolveViaBalancer: function (embedHtml, refererUrl) {
         var iframeMatch = embedHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
         if (!iframeMatch) return null;
 
@@ -511,11 +570,12 @@ var plugin = globalThis.plugin = {
             iframeUrl = iframeUrl + sep + "season=" + sParam + "&episode=" + eParam;
         }
 
+        this._log("balancer iframe: " + iframeUrl);
+
         var bHeaders = { "User-Agent": this.USER_AGENT, "Referer": refererUrl };
         var balancerHtml = bridge.request("GET", iframeUrl, JSON.stringify(bHeaders), "") || "";
         if (!balancerHtml) return null;
 
-        // Если это сериал и внутри балансера есть дерево seasons: [...]
         if (sParam && eParam) {
             var seasonsMatch = balancerHtml.match(/seasons\s*:\s*(\[\{[\s\S]*?\}\])\s*[,;]/);
             if (seasonsMatch) {
@@ -538,24 +598,44 @@ var plugin = globalThis.plugin = {
             }
         }
 
-        // Пробуем стандартный парсер по HTML балансера (но без бесконечной рекурсии)
+        // Извлекаем параметры file/hls/src/etc. из HTML балансера
+        var configRegex = /["']?(?:hls|file|playlist|dash|stream|src|source|url)["']?\s*[:=]\s*["']([^"']{8,})["']/gi;
+        var m;
+        while ((m = configRegex.exec(balancerHtml)) !== null) {
+            var val = m[1].trim();
+            if (val.indexOf(".js") !== -1 || val.indexOf(".css") !== -1) continue;
+            var bestUrl = this._decodePlayerValue(val);
+            if (bestUrl && (bestUrl.indexOf(".m3u8") !== -1 || bestUrl.indexOf(".mp4") !== -1)) return bestUrl;
+        }
+
         var bStream = this._pickBestStreamUrl(balancerHtml);
         if (bStream && (bStream.indexOf(".m3u8") !== -1 || bStream.indexOf(".mp4") !== -1)) {
             return bStream;
         }
 
-        var configRegex = /(?:hls|file|playlist|dash|url)\s*[:=]\s*["']([^"']{8,})["']/gi;
-        var m;
-        while ((m = configRegex.exec(balancerHtml)) !== null) {
-            var dec = this._decodeIfBase64(m[1]);
-            var u = this._pickBestStreamUrl(dec);
-            if (u && (u.indexOf(".m3u8") !== -1 || u.indexOf(".mp4") !== -1)) return u;
+        // Если балансер вложенный — рекурсируем один уровень
+        var nestedIframe = balancerHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+        if (nestedIframe) {
+            var nestedUrl = this._normalizeIframe(nestedIframe[1]);
+            if (nestedUrl !== iframeUrl) {
+                var nHeaders = { "User-Agent": this.USER_AGENT, "Referer": iframeUrl };
+                var nHtml = bridge.request("GET", nestedUrl, JSON.stringify(nHeaders), "") || "";
+                if (nHtml) {
+                    var nRegex = /["']?(?:hls|file|playlist|dash|stream|src|source|url)["']?\s*[:=]\s*["']([^"']{8,})["']/gi;
+                    while ((m = nRegex.exec(nHtml)) !== null) {
+                        var v2 = m[1].trim();
+                        if (v2.indexOf(".js") !== -1 || v2.indexOf(".css") !== -1) continue;
+                        var u2 = this._decodePlayerValue(v2);
+                        if (u2 && (u2.indexOf(".m3u8") !== -1 || u2.indexOf(".mp4") !== -1)) return u2;
+                    }
+                }
+            }
         }
 
         return null;
     },
 
-    _parseApiItem: function(item, forcedCategory) {
+    _parseApiItem: function (item, forcedCategory) {
         var info = item.info || {};
         var id = String(item.id || info.id || "");
         var type = item.type || info.type || 1;
@@ -576,11 +656,8 @@ var plugin = globalThis.plugin = {
         var rating = (!isNaN(kpRating) && kpRating > 0) ? kpRating : ((!isNaN(imdbRating) && imdbRating > 0) ? imdbRating : null);
 
         var badges = [];
-        if (serialStatus.length > 0) {
-            badges.push(serialStatus);
-        } else if (isSeries) {
-            badges.push("Сериал");
-        }
+        if (serialStatus.length > 0) badges.push(serialStatus);
+        else if (isSeries) badges.push("Сериал");
         if (quality.length > 0) badges.push(quality);
         if (rating !== null) {
             if (!isNaN(kpRating) && kpRating > 0) badges.push("КП " + kpRating.toFixed(1));
@@ -632,35 +709,40 @@ var plugin = globalThis.plugin = {
         };
     },
 
-    _normalizeIframe: function(raw) {
+    _normalizeIframe: function (raw) {
         var s = String(raw || "").replace(/\\\//g, "/").replace(/\\u0026/g, "&").trim();
         if (s.indexOf("//") === 0) s = "https:" + s;
         if (s.indexOf("/") === 0) s = "https://liftw.ws" + s;
         return s;
     },
 
-    _decodeIfBase64: function(s) {
+    /**
+     * Разбирает строку, закодированную PlayerJS:
+     *   "#2<b64>"       → декодирует base64
+     *   "//_//<b64>"    → декодирует base64
+     * Внутри base64 могут быть разделители "//_//" — их удаляем.
+     */
+    _decodeIfBase64: function (s) {
         var trimmed = String(s || "").trim();
-        if (trimmed.indexOf("#2") === 0) {
-            try {
-                // В PlayerJS внутри строки #2 иногда вставляются мусорные разделители //_//
-                var cleanB64 = trimmed.substring(2).replace(/\/\/_\/\/[^\s"']*/g, "");
-                return bridge.decodeBase64(cleanB64) || bridge.decodeBase64(trimmed.substring(2)) || trimmed;
-            } catch (_) {
-                return trimmed;
-            }
-        }
-        if (trimmed.indexOf("//_//") === 0) {
-            try {
-                return bridge.decodeBase64(trimmed.substring(5)) || trimmed;
-            } catch (_) {
-                return trimmed;
-            }
-        }
+        if (!trimmed) return trimmed;
+
+        var b64 = null;
+        if (trimmed.indexOf("#2") === 0) b64 = trimmed.substring(2);
+        else if (trimmed.indexOf("//_//") === 0) b64 = trimmed.substring(5);
+        if (b64 === null) return trimmed;
+
+        // ВАЖНО: удаляем разделители //_// по всей строке, а не только в начале
+        b64 = b64.split("//_//").join("");
+
+        try {
+            var decoded = bridge.decodeBase64(b64);
+            if (decoded && decoded.length > 0) return decoded;
+        } catch (_) {}
+
         return trimmed;
     },
 
-    _optStringSmart: function(obj, keys) {
+    _optStringSmart: function (obj, keys) {
         if (!obj) return "";
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i];
@@ -682,7 +764,7 @@ var plugin = globalThis.plugin = {
         return "";
     },
 
-    _optStringArraySmart: function(obj, key) {
+    _optStringArraySmart: function (obj, key) {
         function readArr(target) {
             if (!target || !Array.isArray(target[key])) return [];
             var out = [];
@@ -697,7 +779,7 @@ var plugin = globalThis.plugin = {
         return readArr(obj ? obj.info : null);
     },
 
-    _buildFullDescription: function(genre, country, age, time, mpaa, description) {
+    _buildFullDescription: function (genre, country, age, time, mpaa, description) {
         var lines = [];
 
         var head = [];
@@ -705,20 +787,14 @@ var plugin = globalThis.plugin = {
             var gStr = genre.join(", ");
             head.push(gStr.charAt(0).toUpperCase() + gStr.slice(1));
         }
-        if (country && country.length > 0) {
-            head.push(country.join(", "));
-        }
-        if (head.length > 0) {
-            lines.push(head.join(" • "));
-        }
+        if (country && country.length > 0) head.push(country.join(", "));
+        if (head.length > 0) lines.push(head.join(" • "));
 
         var sub = [];
         if (age) sub.push(age.slice(-1) === "+" ? age : (age + "+"));
         if (time) sub.push(time);
         if (mpaa) sub.push(mpaa);
-        if (sub.length > 0) {
-            lines.push(sub.join(" • "));
-        }
+        if (sub.length > 0) lines.push(sub.join(" • "));
 
         var metaBlock = lines.join("\n");
         var cleanDesc = (description || "").trim();
@@ -727,15 +803,13 @@ var plugin = globalThis.plugin = {
         return metaBlock || cleanDesc;
     },
 
-    _parseDurationMs: function(timeStr) {
+    _parseDurationMs: function (timeStr) {
         if (!timeStr) return null;
         var hMatch = timeStr.match(/(\d+)\s*ч/);
         var mMatch = timeStr.match(/(\d+)\s*мин/);
         var hours = hMatch ? parseInt(hMatch[1], 10) : 0;
         var minutes = mMatch ? parseInt(mMatch[1], 10) : 0;
-        if (hours > 0 || minutes > 0) {
-            return (hours * 3600 + minutes * 60) * 1000;
-        }
+        if (hours > 0 || minutes > 0) return (hours * 3600 + minutes * 60) * 1000;
 
         var parts = timeStr.split(":");
         if (parts.length === 2) {
@@ -751,7 +825,7 @@ var plugin = globalThis.plugin = {
         return null;
     },
 
-    _extractMediaId: function(url) {
+    _extractMediaId: function (url) {
         if (!url) return null;
         var str = String(url).trim();
         if (/^\d+$/.test(str)) return str;
